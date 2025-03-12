@@ -66,5 +66,17 @@ module.exports = {
   RECORDING_CLEANUP_INTERVAL: 60 * 1000, // Clean stale recordings every minute
   
   // Browser pool settings
-  BROWSER_POOL_SIZE: 3, // Maximum number of concurrent browser instances
+  BROWSER_POOL_SIZE: 5, // Increased from 3 to 5 for concurrent operations
+  
+  // Maximum auto-record monitors per user
+  MAX_AUTO_RECORD_MONITORS: 3,
+  FILE_SERVER_URL: 'http://98.32.82.246:3000', // Change to your server's public URL
+FILE_SERVER_PORT: 3000,
+FILE_STORAGE_PATH: './recordings', // Path to store recordings
+FILE_RETENTION_DAYS: 7, // Auto-delete files older than this
+  // Concurrent operations settings
+  MAX_CONCURRENT_RECORDINGS: 5, // Allow up to 5 recordings at once
+  COMMAND_TIMEOUT: 60 * 1000 // Default timeout for commands (1 minute)
+  // File server configuration
+
 };

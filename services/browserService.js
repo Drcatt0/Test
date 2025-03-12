@@ -4,10 +4,10 @@
 const puppeteer = require('puppeteer');
 const config = require('../config/config');
 
-// Browser pool for concurrent operations
+// Expanded browser pool for concurrent operations
 const browserPool = {
   instances: [],
-  maxSize: config.BROWSER_POOL_SIZE || 3,
+  maxSize: config.BROWSER_POOL_SIZE || 5, // Increased from 3 to 5
   inUse: 0
 };
 
@@ -56,57 +56,20 @@ async function getBrowser() {
       return browser;
     }
     
-    // If we're at max capacity, wait for a browser to be released
-    console.log('Waiting for an available browser...');
-    return new Promise((resolve) => {
-      const checkInterval = setInterval(() => {
-        for (let i = 0; i < browserPool.instances.length; i++) {
-          const browser = browserPool.instances[i];
-          if (browser && browser.connected && !browser.inUse) {
-            browser.inUse = true;
-            browserPool.inUse++;
-            clearInterval(checkInterval);
-            resolve(browser);
-            return;
-          }
-        }
-      }, 500); // Check every 500ms
-      
-      // Set a timeout to avoid indefinite waiting
-      setTimeout(() => {
-        clearInterval(checkInterval);
-        // If we time out, launch a new browser anyway
-        puppeteer.launch({
-          executablePath: '/usr/bin/chromium-browser',
-          headless: true,
-          args: config.BROWSER_ARGS,
-          defaultViewport: { width: 1280, height: 720 }
-        }).then(browser => {
-          browser.inUse = true;
-          browser.lastActivity = Date.now();
-          
-          // If we're over capacity, close the oldest browser later
-          if (browserPool.instances.length >= browserPool.maxSize) {
-            setTimeout(() => cleanupBrowsers(), 5000);
-          }
-          
-          browserPool.instances.push(browser);
-          browserPool.inUse++;
-          resolve(browser);
-        }).catch(err => {
-          console.error("Error launching browser in timeout fallback:", err);
-          // Try one more time with minimal options
-          puppeteer.launch({
-            executablePath: '/usr/bin/chromium-browser',
-            headless: true,
-            args: ['--no-sandbox', '--disable-setuid-sandbox']
-          }).then(resolve).catch(() => {
-            // If this fails too, resolve with null and let the caller handle it
-            resolve(null);
-          });
-        });
-      }, 15000); // 15 second timeout
+    // If we're at max capacity, launch a temporary browser instead of waiting
+    console.log('All browser instances in use. Creating temporary browser...');
+    const tempBrowser = await puppeteer.launch({
+      executablePath: '/usr/bin/chromium-browser',
+      headless: true,
+      args: config.BROWSER_ARGS,
+      defaultViewport: { width: 1280, height: 720 }
     });
+    
+    // Set up auto-close for temp browser after use
+    tempBrowser.isTemporary = true;
+    
+    console.log('Temporary browser created (will not be added to pool)');
+    return tempBrowser;
   } catch (error) {
     console.error("Error getting browser from pool:", error);
     return null;
@@ -118,6 +81,17 @@ async function getBrowser() {
  */
 function releaseBrowser(browser) {
   if (!browser) return;
+  
+  // Temporary browsers are closed, not returned to the pool
+  if (browser.isTemporary) {
+    try {
+      browser.close();
+      console.log('Temporary browser closed');
+    } catch (e) {
+      console.error('Error closing temporary browser:', e);
+    }
+    return;
+  }
   
   // Find the browser in our pool
   const index = browserPool.instances.indexOf(browser);

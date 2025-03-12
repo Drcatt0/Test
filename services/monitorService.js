@@ -52,66 +52,47 @@ async function checkUsernameExists(username) {
 }
 
 async function checkStripchatStatus(username) {
-  let page = null;
-  const result = { isLive: false, thumbnail: null, goal: { active: false, completed: false } };
-  console.log(`🔍 Starting status check for ${username}...`);
-  try {
-    const browser = await browserService.getBrowser();
-    if (!browser) {
-      console.error(`❌ Failed to get browser to check status for ${username}`);
-      return result;
-    }
-    page = await browser.newPage();
-    await page.setRequestInterception(true);
-    page.on('request', (req) => {
-      const resourceType = req.resourceType();
-      const url = req.url();
-      if (resourceType === 'media' || (resourceType === 'image' && !url.includes('thumbnail') && !url.includes('preview'))) {
-        req.abort();
-      } else {
-        req.continue();
-      }
+    const browser = await puppeteer.launch({
+        executablePath: '/usr/bin/chromium-browser',
+        headless: true,
+        args: ['--no-sandbox', '--disable-setuid-sandbox']
     });
-    await page.setDefaultNavigationTimeout(30000);
-    await page.goto(`https://stripchat.com/${username}`, {
-      waitUntil: 'networkidle2',
-      timeout: 30000
-    });
-    await page.evaluate(() => new Promise(resolve => setTimeout(resolve, 3000)));
-    console.log(`✅ Completed page load for ${username}, analyzing status...`);
-    const pageData = await page.evaluate(() => {
-      const liveBadge = document.querySelector(".live-badge");
-      const liveStream = document.querySelector("video");
-      const liveStatusText = document.querySelector(".status")?.innerText.includes("Live");
-      const thumb = document.querySelector('meta[property="og:image"]')?.content;
-      let goal = { active: false, completed: false, progress: 0, text: '' };
-      const goalElement = document.querySelector('.goal-widget, .goal, .progress-bar-container');
-      if (goalElement) {
-        goal.active = true;
-        const progressText = goalElement.innerText.match(/(\d+)%/);
-        goal.progress = progressText ? parseInt(progressText[1], 10) : 0;
-        goal.completed = goal.progress >= 99;
-      }
-      return {
-        isLive: liveBadge !== null || liveStream !== null || liveStatusText === true,
-        thumbnail: thumb || null,
-        goal: goal
-      };
-    });
-    await page.close();
-    browserService.releaseBrowser(browser);
-    console.log(`📊 Status check for ${username}: Live=${pageData.isLive}, Goal=${pageData.goal.active ? `Progress: ${pageData.goal.progress}%` : 'None'}`);
-    return pageData;
-  } catch (error) {
-    console.error(`❌ Error checking status for ${username}:`, error);
-    if (page) {
-      try { await page.close(); } catch (e) {}
-    }
-    browserService.releaseBrowser();
-    return result;
-  }
-}
 
+    const page = await browser.newPage();
+    if (!page) {
+        console.error("Failed to create a new page in Puppeteer.");
+        await browser.close();
+        return { isLive: false, thumbnail: null };
+    }
+
+    try {
+        await page.goto(`https://stripchat.com/${username}`, {
+            waitUntil: 'networkidle2',
+            timeout: 60000
+        });
+
+        // Alternative to waitFor or waitForTimeout
+        await new Promise(resolve => setTimeout(resolve, 3000));
+
+        const status = await page.evaluate(() => {
+            const liveBadge = document.querySelector('.live-badge');
+            const liveStream = document.querySelector('video');
+            const liveStatusText = document.querySelector('.status')?.innerText.includes("Live");
+
+            return {
+                isLive: liveBadge !== null || liveStream !== null || liveStatusText === true,
+                thumbnail: document.querySelector('meta[property="og:image"]')?.content || null
+            };
+        });
+
+        await browser.close();
+        return status;
+    } catch (error) {
+        console.error("Error checking Stripchat status:", error);
+        await browser.close();
+        return { isLive: false, thumbnail: null };
+    }
+}
 /**
  * Check and notify about streamer status
  */
@@ -254,17 +235,19 @@ async function startMonitoring(botInstance) {
   }, config.MONITOR_INTERVAL);
 
   // Goal monitoring (every 15 seconds) using setTimeout loop
-  function runGoalCheck() {
+  const runGoalCheck = () => {
     console.log("🔄 Running goal check for auto-recording...");
-    checkGoalsForAutoRecordinɡ(botInstance)
+    checkGoalsForAutoRecording(botInstance)  // Fixed function name typo
       .catch(error => console.error("❌ Error in goal monitoring routine:", error));
-    goalCheckInterval = setTimeout(runGoalCheck, 15000);
-  }
-  goalCheckInterval = setTimeout(runGoalCheck, 15000);
+    goalCheckInterval = setTimeout(runGoalCheck, config.GOAL_CHECK_INTERVAL);
+  };
+  
+  // Start the initial goal check
+  goalCheckInterval = setTimeout(runGoalCheck, config.GOAL_CHECK_INTERVAL);
 
   console.log('📡 Monitoring is now active!');
 
-  // Initial full status check after 5 seconds
+  // Initial full status check after 5 seconds - with botInstance properly passed
   setTimeout(async () => {
     try {
       console.log("🔍 Performing initial status check...");
@@ -303,31 +286,115 @@ async function performFullStatusCheck(botInstance) {
 
 /**
  * Check goals for live streamers and trigger auto-recording
+ * with improved logging and reliability
  */
-async function checkGoalsForAutoRecordinɡ(botInstance) {
-  console.log("🔎 Checking goals for all live users...");
+async function checkGoalsForAutoRecording(botInstance) {
+  console.log("🔎 Running goal check for auto-recording...");
   try {
+    // Get all monitored users
     const monitoredUsers = monitoredUsersModel.getAllMonitoredUsers();
-    console.log(`📡 Found ${monitoredUsers.length} monitored users`);
-    const liveUsers = monitoredUsers.filter(user => user.isLive);
-    console.log(`🎥 Checking ${liveUsers.length} live users for goals`);
-    if (liveUsers.length === 0) {
-      console.log("⚠️ No live users found, skipping goal check.");
+    if (!monitoredUsers || monitoredUsers.length === 0) {
+      console.log("⚠️ No monitored users found, skipping goal check.");
       return;
     }
-    for (const user of liveUsers) {
-      console.log(`🔍 Checking goals for: ${user.username}`);
-      const { goal } = await checkStripchatStatus(user.username);
-      if (goal && goal.active) {
-        console.log(`🎯 ${user.username} has an active goal: ${goal.progress}% complete`);
-        if (goal.completed) {
-          console.log(`🚀 Goal completed for ${user.username}, triggering auto-recording...`);
-          await triggerGoalAutoRecording(user, botInstance);
+    
+    console.log(`📊 Found ${monitoredUsers.length} monitored users to check`);
+    
+    // First, update live status for all users
+    const livePromises = monitoredUsers.map(async (user) => {
+      try {
+        // Only check users who were live in the last check or haven't been checked recently
+        const lastCheckedTime = user.lastChecked ? new Date(user.lastChecked).getTime() : 0;
+        const timeSinceLastCheck = Date.now() - lastCheckedTime;
+        
+        // If user was previously live or hasn't been checked in 5 minutes, check now
+        if (user.isLive || timeSinceLastCheck > 5 * 60 * 1000) {
+          console.log(`🔍 Checking live status for ${user.username}...`);
+          const status = await checkStripchatStatus(user.username);
+          
+          // Update user data
+          user.isLive = status.isLive;
+          user.lastChecked = new Date().toISOString();
+          
+          if (status.isLive) {
+            console.log(`🟢 ${user.username} is LIVE`);
+            return { 
+              ...user, 
+              currentStatus: status 
+            };
+          } else {
+            console.log(`⚫ ${user.username} is OFFLINE`);
+          }
         }
-      } else {
-        console.log(`⚠️ No active goal found for ${user.username}`);
+      } catch (error) {
+        console.error(`Error checking live status for ${user.username}:`, error);
+      }
+      return null;
+    });
+    
+    // Wait for all checks to complete and filter out offline users
+    const checkedUsers = (await Promise.all(livePromises)).filter(u => u !== null);
+    
+    // Save updated status information
+    await monitoredUsersModel.saveMonitoredUsers();
+    
+    console.log(`🎯 Checking goals for ${checkedUsers.length} live users...`);
+    
+    // Process each live user for goal completion
+    for (const user of checkedUsers) {
+      try {
+        const { username, chatId } = user;
+        const { goal } = user.currentStatus;
+        
+        if (!goal || !goal.active) {
+          console.log(`⚠️ No active goal for ${username}`);
+          continue;
+        }
+        
+        // Get previous goal state for comparison
+        const previousGoalCompleted = user.lastGoalCompleted || false;
+        const previousGoalProgress = user.goalProgress || 0;
+        
+        // Update goal information
+        user.hasGoal = true;
+        user.goalProgress = goal.progress;
+        user.goalCompleted = goal.completed;
+        user.goalText = goal.text || 'Special Goal';
+        
+        console.log(`📊 ${username} goal: ${goal.progress}% complete (previous: ${previousGoalProgress}%), completed: ${goal.completed}`);
+        
+        // Check if goal has just been completed (was not completed before, but is now)
+        if (goal.completed && !previousGoalCompleted) {
+          console.log(`🎉 GOAL COMPLETED for ${username}! Triggering auto-recording...`);
+          
+          // Get eligible users with auto-record enabled for this streamer
+          const eligibleUsers = autoRecordConfigModel.getUsersWithAutoRecordForUsername(username, chatId);
+          console.log(`✓ Found ${eligibleUsers.length} eligible users for auto-recording ${username}`);
+          
+          // Trigger auto-recording for each eligible user
+          for (const eligibleUser of eligibleUsers) {
+            try {
+              console.log(`🎬 Auto-recording for user ID ${eligibleUser.userId}`);
+              await triggerGoalAutoRecording(user, botInstance, eligibleUser);
+            } catch (recordError) {
+              console.error(`Error triggering auto-recording for ${username}:`, recordError);
+            }
+          }
+          
+          user.lastGoalCompleted = true;
+        } else if (!goal.completed && previousGoalCompleted) {
+          // Goal was reset
+          console.log(`🔄 Goal for ${username} was reset or started over`);
+          user.lastGoalCompleted = false;
+        }
+      } catch (userError) {
+        console.error(`Error processing goal for ${user.username}:`, userError);
       }
     }
+    
+    // Save the updated goal status information
+    await monitoredUsersModel.saveMonitoredUsers();
+    
   } catch (error) {
     console.error("❌ Error in goal check routine:", error);
   }
@@ -336,42 +403,116 @@ async function checkGoalsForAutoRecordinɡ(botInstance) {
 /**
  * Trigger auto-recording for a completed goal
  */
-async function triggerGoalAutoRecording(user, botInstance) {
-  console.log(`🚀 Goal completed for ${user.username}, checking auto-recording eligibility...`);
-  const eligibleUsers = autoRecordConfigModel.getUsersWithAutoRecordForUsername(
-    user.username,
-    user.chatId
-  );
-  console.log(`📡 Found ${eligibleUsers.length} eligible users for auto-recording: ${user.username}`);
-  for (const eligibleUser of eligibleUsers) {
-    if (memoryService.isAutoRecordingActive(user.chatId, user.username)) {
-      console.log(`⚠️ Already auto-recording ${user.username}`);
-      continue;
-    }
-    const recordingKey = memoryService.addActiveAutoRecording(user.chatId, user.username);
-    const duration = eligibleUser.duration || 180;
+async function triggerGoalAutoRecording(user, botInstance, eligibleUser) {
+  const { username, chatId, goalText } = user;
+  
+  // Check if already recording
+  if (memoryService.isAutoRecordingActive(chatId, username)) {
+    console.log(`⚠️ Already auto-recording ${username}`);
+    return false;
+  }
+  
+  // Register this recording as active
+  const recordingKey = memoryService.addActiveAutoRecording(chatId, username);
+  const duration = eligibleUser.duration || 180; // Default 3 minutes
+  
+  try {
+    console.log(`🎬 Starting auto-recording of ${username} for ${duration} seconds...`);
+    
+    // Notify the user
+    await botInstance.telegram.sendMessage(
+      chatId,
+      `🎉 *${username}* completed their goal!\n\n` +
+        `🎯 *Goal:* ${goalText || 'Special Goal'}\n\n` +
+        `🎬 *Auto-recording for ${duration} seconds...*`,
+      { parse_mode: 'Markdown' }
+    );
+    
+    // Set up context for recording
+    const mockCtx = {
+      message: { 
+        chat: { id: chatId }, 
+        from: { id: eligibleUser.userId }
+      },
+      reply: (text, options) => botInstance.telegram.sendMessage(chatId, text, options),
+      replyWithVideo: (data) => botInstance.telegram.sendVideo(chatId, data.source, data.caption ? { caption: data.caption } : {}),
+      telegram: botInstance.telegram
+    };
+    
+    // Execute the recording
+    const recordService = require('./recordService');
+    await recordService.executeRecord(mockCtx, username, duration);
+    
+    return true;
+  } catch (error) {
+    console.error(`❌ Error auto-recording ${username}:`, error);
+    return false;
+  } finally {
+    // Always clean up
+    memoryService.removeActiveAutoRecording(recordingKey);
+  }
+}
+
+/**
+ * Start the monitoring routine
+ * @param {Object} botInstance - Telegram bot instance
+ */
+async function startMonitoring(botInstance) {
+  console.log("🚀 Starting monitoring service...");
+  
+  // Load models
+  await monitoredUsersModel.loadMonitoredUsers();
+  await autoRecordConfigModel.loadAutoRecordConfig();
+  
+  console.log('✅ Monitoring service initialized');
+
+  // Regular monitoring for live users (every 5 minutes)
+  monitorInterval = setInterval(async () => {
+    console.log("🔍 Running full status check...");
     try {
-      console.log(`🎬 Auto-recording ${user.username} for ${duration} seconds`);
-      await botInstance.telegram.sendMessage(
-        user.chatId,
-        `🎉 *${user.username}* completed their goal!\n\n` +
-          `🎯 *Goal:* ${user.goalText || 'No description'}\n\n` +
-          `🎬 *Auto-recording for ${duration} seconds...*`,
-        { parse_mode: 'Markdown' }
-      );
-      const mockCtx = {
-        message: { chat: { id: user.chatId }, from: { id: eligibleUser.userId } },
-        reply: (text, options) => botInstance.telegram.sendMessage(user.chatId, text, options),
-        replyWithVideo: (data) =>
-          botInstance.telegram.sendVideo(user.chatId, data.source, { caption: data.caption }),
-        telegram: botInstance.telegram
-      };
-      await recordService.executeRecord(mockCtx, user.username, duration);
+      await performFullStatusCheck(botInstance);
     } catch (error) {
-      console.error(`❌ Error auto-recording ${user.username}:`, error);
-    } finally {
-      memoryService.removeActiveAutoRecording(recordingKey);
+      console.error("❌ Error in full status check:", error);
     }
+  }, config.MONITOR_INTERVAL);
+
+  // Goal monitoring every 15 seconds using setTimeout loop for better timing accuracy
+  // Using a recursive function with setTimeout instead of setInterval
+  // This ensures each check completes before starting the next one
+  const runGoalCheck = () => {
+    const startTime = Date.now();
+    
+    // Run the goal check
+    checkGoalsForAutoRecording(botInstance)
+      .catch(error => console.error("❌ Error in goal monitoring routine:", error))
+      .finally(() => {
+        // Calculate how long the check took
+        const elapsed = Date.now() - startTime;
+        
+        // Calculate time to wait until next check
+        // If check took longer than interval, run next check immediately but with small delay
+        const nextCheckDelay = Math.max(50, config.GOAL_CHECK_INTERVAL - elapsed);
+        
+        // Schedule next check
+        goalCheckInterval = setTimeout(runGoalCheck, nextCheckDelay);
+        
+        // Log timing information
+        console.log(`🕒 Goal check took ${elapsed}ms, next check in ${nextCheckDelay}ms`);
+      });
+  };
+  
+  // Start the initial goal check after a short delay
+  console.log(`📅 Scheduling first goal check in 5 seconds...`);
+  goalCheckInterval = setTimeout(runGoalCheck, 5000);
+
+  console.log('📡 All monitoring routines are now active!');
+
+  // Run an initial full status check
+  try {
+    console.log("🔍 Performing initial status check...");
+    await performFullStatusCheck(botInstance);
+  } catch (error) {
+    console.error("❌ Error in initial status check:", error);
   }
 }
 
@@ -384,7 +525,7 @@ function stopMonitoring() {
     monitorInterval = null;
   }
   if (goalCheckInterval) {
-    clearInterval(goalCheckInterval);
+    clearTimeout(goalCheckInterval);  // Changed from clearInterval to clearTimeout
     goalCheckInterval = null;
   }
   console.log('Stopped all monitoring routines');
@@ -400,6 +541,6 @@ module.exports = {
   startMonitoring,
   stopMonitoring,
   performFullStatusCheck,
-  checkGoalsForAutoRecordinɡ,
+  checkGoalsForAutoRecording,  // Fixed function name
   triggerGoalAutoRecording
 };

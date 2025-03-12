@@ -13,96 +13,134 @@ let premiumUsers = {};
  */
 async function loadPremiumUsers() {
   try {
-    console.log(`Attempting to load premium users from ${config.PREMIUM_USERS_PATH}`);
+    console.log(`📂 Checking for premium users file at ${config.PREMIUM_USERS_PATH}`);
     
-    // First check if the file exists
-    if (!fs.existsSync(config.PREMIUM_USERS_PATH)) {
-      console.log("Premium users file does not exist. Creating a new one.");
+    // Check if the file exists first
+    if (!await fs.pathExists(config.PREMIUM_USERS_PATH)) {
+      console.log(`⚠️ File not found: ${config.PREMIUM_USERS_PATH}. Creating a new one.`);
       premiumUsers = {};
       await savePremiumUsers();
       return premiumUsers;
     }
+
+    // Read the file
+    const rawData = await fs.readFile(config.PREMIUM_USERS_PATH, 'utf-8');
+    console.log(`📄 Read ${rawData.length} bytes from premium users file`);
     
-    const data = await fs.readFile(config.PREMIUM_USERS_PATH, 'utf-8');
-    
-    if (!data || data.trim() === '') {
-      console.log("Premium users file is empty. Starting fresh.");
+    if (!rawData || rawData.trim() === '') {
+      console.log("⚠️ Premium users file is empty. Starting fresh.");
       premiumUsers = {};
       await savePremiumUsers();
       return premiumUsers;
     }
     
     try {
-      premiumUsers = JSON.parse(data);
-      console.log("Successfully parsed premium users data");
-    } catch (parseError) {
-      console.error("Error parsing premium users JSON:", parseError);
-      // If we can't parse the file, back it up and start fresh
-      const backupPath = `${config.PREMIUM_USERS_PATH}.backup-${Date.now()}`;
-      await fs.copyFile(config.PREMIUM_USERS_PATH, backupPath);
-      console.log(`Backed up corrupt file to ${backupPath}`);
-      premiumUsers = {};
-    }
-    
-    // Convert string keys to ensure consistency
-    const cleanedData = {};
-    for (const [key, value] of Object.entries(premiumUsers)) {
-      cleanedData[key.toString()] = value;
-    }
-    premiumUsers = cleanedData;
-    
-    // Clean up expired premium users
-    const now = new Date();
-    let changes = false;
-    
-    for (const [userId, data] of Object.entries(premiumUsers)) {
-      if (!data.expiresAt) {
-        delete premiumUsers[userId];
-        changes = true;
-        continue;
-      }
+      const parsedData = JSON.parse(rawData);
+      console.log(`🔍 Successfully parsed premium users JSON data`);
       
-      try {
-        if (new Date(data.expiresAt) < now) {
-          console.log(`User ${userId} premium has expired`);
-          delete premiumUsers[userId];
-          changes = true;
-        } else {
-          console.log(`User ${userId} has premium until ${data.expiresAt}`);
+      if (typeof parsedData === 'object' && parsedData !== null) {
+        premiumUsers = parsedData;
+        
+        // Convert date strings to Date objects for easier handling
+        for (const userId in premiumUsers) {
+          if (premiumUsers[userId].activatedAt) {
+            premiumUsers[userId].activatedAt = new Date(premiumUsers[userId].activatedAt).toISOString();
+          }
+          if (premiumUsers[userId].expiresAt) {
+            premiumUsers[userId].expiresAt = new Date(premiumUsers[userId].expiresAt).toISOString();
+          }
         }
-      } catch (dateError) {
-        console.error(`Invalid expiry date for user ${userId}:`, dateError);
-        // Fix the expiry date if possible, otherwise remove
-        if (typeof data.activatedAt === 'string' && data.activatedAt) {
-          try {
-            const activatedDate = new Date(data.activatedAt);
-            data.expiresAt = new Date(activatedDate.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString();
+        
+        // Clean up expired premium users
+        const now = new Date();
+        let changes = false;
+        
+        for (const [userId, userData] of Object.entries(premiumUsers)) {
+          if (!userData.expiresAt) {
+            console.log(`⚠️ User ${userId} has no expiry date, removing`);
+            delete premiumUsers[userId];
             changes = true;
-          } catch (e) {
+            continue;
+          }
+          
+          try {
+            const expiryDate = new Date(userData.expiresAt);
+            if (expiryDate < now) {
+              console.log(`⏱️ User ${userId} premium expired on ${expiryDate.toISOString()}`);
+              delete premiumUsers[userId];
+              changes = true;
+            } else {
+              console.log(`✅ User ${userId} has premium until ${expiryDate.toISOString()}`);
+            }
+          } catch (dateError) {
+            console.error(`❌ Invalid expiry date for user ${userId}:`, dateError.message);
             delete premiumUsers[userId];
             changes = true;
           }
-        } else {
-          delete premiumUsers[userId];
-          changes = true;
         }
+        
+        if (changes) {
+          console.log("📝 Changes made to premium users data, saving...");
+          await savePremiumUsers();
+        }
+        
+        console.log(`✅ Loaded ${Object.keys(premiumUsers).length} premium users`);
+      } else {
+        console.error("❌ Premium users JSON data is not an object as expected");
+        premiumUsers = {};
       }
+    } catch (parseError) {
+      console.error("❌ Error parsing premium users JSON:", parseError.message);
+      // Backup the corrupted file
+      const backupPath = `${config.PREMIUM_USERS_PATH}.corrupt.${Date.now()}`;
+      await fs.copy(config.PREMIUM_USERS_PATH, backupPath);
+      console.log(`📋 Backed up corrupted file to ${backupPath}`);
+      
+      premiumUsers = {};
     }
-    
-    if (changes) {
-      console.log("Changes made to premium users data, saving...");
-      await savePremiumUsers();
-    }
-    
-    console.log(`Loaded ${Object.keys(premiumUsers).length} premium users`);
+
+    // Always save to ensure consistent format
+    await savePremiumUsers();
+    return premiumUsers;
   } catch (error) {
-    console.error("Error loading premium users:", error);
-    console.log("Starting with empty premium users data");
+    console.error("❌ Error loading premium users:", error.message, error.stack);
     premiumUsers = {};
     await savePremiumUsers();
+    return premiumUsers;
   }
-  
-  return premiumUsers;
+}
+
+/**
+ * Save premium users to JSON file
+ */
+async function savePremiumUsers() {
+  try {
+    // Ensure directory exists
+    const dir = path.dirname(config.PREMIUM_USERS_PATH);
+    await fs.ensureDir(dir);
+    
+    console.log(`💾 Saving ${Object.keys(premiumUsers).length} premium users to ${config.PREMIUM_USERS_PATH}`);
+    
+    // Create a copy of the data for saving
+    const dataToSave = JSON.stringify(premiumUsers, null, 2);
+    
+    // Use atomic write pattern - write to temp file then rename
+    const tempFile = `${config.PREMIUM_USERS_PATH}.tmp`;
+    await fs.writeFile(tempFile, dataToSave, 'utf8');
+    
+    // Verify the file was written
+    if (!await fs.pathExists(tempFile)) {
+      throw new Error(`Failed to write temp file: ${tempFile}`);
+    }
+    
+    await fs.rename(tempFile, config.PREMIUM_USERS_PATH);
+    
+    console.log("✅ Premium users data saved successfully");
+    return true;
+  } catch (error) {
+    console.error("❌ Error saving premium users:", error.message, error.stack);
+    return false;
+  }
 }
 
 /**

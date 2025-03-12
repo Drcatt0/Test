@@ -13,15 +13,86 @@ let monitoredUsers = [];
  */
 async function loadMonitoredUsers() {
   try {
-    const data = await fs.readFile(config.JSON_FILE_PATH, 'utf-8');
-    monitoredUsers = JSON.parse(data);
-    console.log(`Loaded ${monitoredUsers.length} monitored users`);
+    // Check if the file exists first
+    if (!await fs.pathExists(config.JSON_FILE_PATH)) {
+      console.log(`⚠️ File not found: ${config.JSON_FILE_PATH}. Creating a new one.`);
+      monitoredUsers = [];
+      await saveMonitoredUsers();
+      return monitoredUsers;
+    }
+
+    // Read the file
+    const rawData = await fs.readFile(config.JSON_FILE_PATH, 'utf-8');
+    console.log(`📄 Read ${rawData.length} bytes from ${config.JSON_FILE_PATH}`);
+    
+    if (!rawData || rawData.trim() === '') {
+      console.log("⚠️ Monitored users file is empty. Starting fresh.");
+      monitoredUsers = [];
+      await saveMonitoredUsers();
+      return monitoredUsers;
+    }
+    
+    try {
+      const parsedData = JSON.parse(rawData);
+      console.log(`🔍 Successfully parsed JSON data`);
+      
+      if (Array.isArray(parsedData)) {
+        monitoredUsers = parsedData;
+        console.log(`✅ Loaded ${monitoredUsers.length} monitored users`);
+      } else {
+        console.error("❌ JSON data is not an array as expected");
+        monitoredUsers = [];
+      }
+    } catch (parseError) {
+      console.error("❌ Error parsing JSON:", parseError.message);
+      // Backup the corrupted file
+      const backupPath = `${config.JSON_FILE_PATH}.corrupt.${Date.now()}`;
+      await fs.copy(config.JSON_FILE_PATH, backupPath);
+      console.log(`📋 Backed up corrupted file to ${backupPath}`);
+      
+      monitoredUsers = [];
+    }
+
+    await saveMonitoredUsers();
+    return monitoredUsers;
   } catch (error) {
-    console.log("No existing monitoredUsers.json found. Starting fresh.");
+    console.error("❌ Error loading monitored users:", error.message);
     monitoredUsers = [];
     await saveMonitoredUsers();
+    return monitoredUsers;
   }
-  return monitoredUsers;
+}
+
+/**
+ * Save monitored users to JSON file
+ */
+async function saveMonitoredUsers() {
+  try {
+    // Ensure the data directory exists
+    const dir = path.dirname(config.JSON_FILE_PATH);
+    await fs.ensureDir(dir);
+    
+    // Log the data being saved
+    console.log(`💾 Saving ${monitoredUsers.length} monitored users to ${config.JSON_FILE_PATH}`);
+    
+    // Write to a temp file first, then rename for atomic operation
+    const tempFile = `${config.JSON_FILE_PATH}.tmp`;
+    await fs.writeFile(tempFile, JSON.stringify(monitoredUsers, null, 2));
+    
+    // Verify the file was written
+    if (!await fs.pathExists(tempFile)) {
+      throw new Error(`Failed to write temp file: ${tempFile}`);
+    }
+    
+    // Rename the file (atomic operation)
+    await fs.rename(tempFile, config.JSON_FILE_PATH);
+    
+    console.log(`✅ Successfully saved monitored users to disk`);
+    return true;
+  } catch (error) {
+    console.error("❌ Error saving monitoredUsers.json:", error.message, error.stack);
+    return false;
+  }
 }
 
 /**

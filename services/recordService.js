@@ -4,6 +4,7 @@
 const fs = require('fs-extra');
 const path = require('path');
 const { spawn } = require('child_process');
+const { v4: uuidv4 } = require('uuid'); // Add uuid dependency or use Date.now() if not available
 const browserService = require('./browserService');
 const monitoredUsersModel = require('../models/monitoredUsers');
 const premiumUsersModel = require('../models/premiumUsers');
@@ -13,6 +14,9 @@ const config = require('../config/config');
 
 // In-memory rate limit storage
 const userRateLimits = {};
+
+// Active recording processes
+const activeRecordingProcesses = new Map();
 
 /**
  * Check if a user can record based on rate limits (free users only)
@@ -99,10 +103,10 @@ async function determineModelId(username) {
       });
       
       await page.close();
-      browserService.releaseBrowser();
+      browserService.releaseBrowser(browser);
     } catch (error) {
       await page.close();
-      browserService.releaseBrowser();
+      browserService.releaseBrowser(browser);
       throw error;
     }
   } catch (error) {
@@ -164,13 +168,14 @@ function generateStreamUrls(username, modelId) {
  */
 async function testStreamUrl(streamUrl) {
   try {
+    const recordingId = Date.now().toString();
     const result = await new Promise((resolve) => {
       const testProcess = spawn('ffmpeg', [
         '-i', streamUrl,
         '-t', '2',
         '-c', 'copy',
         '-y',
-        '/tmp/test_segment.mp4'
+        `/tmp/test_segment_${recordingId}.mp4`
       ]);
       
       let testOutput = '';
@@ -179,6 +184,11 @@ async function testStreamUrl(streamUrl) {
       });
       
       testProcess.on('close', (code) => {
+        // Clean up test file
+        try {
+          fs.unlinkSync(`/tmp/test_segment_${recordingId}.mp4`);
+        } catch (e) {}
+        
         resolve({ code, output: testOutput });
       });
       
@@ -196,12 +206,10 @@ async function testStreamUrl(streamUrl) {
   }
 }
 
-// In services/recordService.js, update the recordStream function
-
 /**
- * Record a stream
+ * Record a stream with unique recording ID for concurrent recordings
  */
-async function recordStream(streamUrl, duration, outputFile) {
+async function recordStream(streamUrl, duration, outputFile, recordingId) {
   return new Promise((resolve, reject) => {
     // Use the configured ffmpeg arguments and add specific ones for this recording
     const ffmpegArgs = [
@@ -214,6 +222,9 @@ async function recordStream(streamUrl, duration, outputFile) {
     console.log(`Starting ffmpeg with args: ${ffmpegArgs.join(' ')}`);
     
     const ffmpegProcess = spawn('ffmpeg', ffmpegArgs);
+    
+    // Store the process for potential cancellation
+    activeRecordingProcesses.set(recordingId, ffmpegProcess);
     
     let offlineDetected = false;
     let ffmpegOutput = '';
@@ -233,6 +244,9 @@ async function recordStream(streamUrl, duration, outputFile) {
     });
     
     ffmpegProcess.on('close', (code) => {
+      // Clean up
+      activeRecordingProcesses.delete(recordingId);
+      
       resolve({
         code,
         output: ffmpegOutput,
@@ -242,6 +256,7 @@ async function recordStream(streamUrl, duration, outputFile) {
     
     ffmpegProcess.on('error', (err) => {
       console.error('FFmpeg process error:', err);
+      activeRecordingProcesses.delete(recordingId);
       resolve({
         code: 1,
         output: `FFmpeg error: ${err.message}`,
@@ -253,30 +268,38 @@ async function recordStream(streamUrl, duration, outputFile) {
     // For short recordings, give at least 5 minutes; for longer ones, use 3x the duration
     const timeoutDuration = Math.max(300000, (duration * 1000) * 3); // At least 5 minutes or 3x the duration
     const timeout = setTimeout(() => {
-      console.log(`Recording timeout triggered after ${timeoutDuration/1000} seconds`);
+      console.log(`Recording timeout triggered after ${timeoutDuration/1000} seconds for recording ${recordingId}`);
       
       // Don't reject, just try to terminate gracefully
       try {
-        ffmpegProcess.kill('SIGTERM');
-        
-        // Give process time to shut down gracefully
-        setTimeout(() => {
-          // Force kill if still running
-          try { 
-            ffmpegProcess.kill('SIGKILL'); 
-          } catch (e) {
-            console.error('Error killing ffmpeg process:', e);
-          }
+        if (activeRecordingProcesses.has(recordingId)) {
+          const proc = activeRecordingProcesses.get(recordingId);
+          proc.kill('SIGTERM');
           
-          // Resolve with what we have so far
-          resolve({
-            code: 1,
-            output: ffmpegOutput + '\nProcess terminated due to timeout',
-            offlineDetected: true
-          });
-        }, 5000);  // Give 5 seconds for graceful shutdown
+          // Give process time to shut down gracefully
+          setTimeout(() => {
+            // Force kill if still running
+            try { 
+              if (activeRecordingProcesses.has(recordingId)) {
+                const proc = activeRecordingProcesses.get(recordingId);
+                proc.kill('SIGKILL');
+                activeRecordingProcesses.delete(recordingId);
+              }
+            } catch (e) {
+              console.error('Error killing ffmpeg process:', e);
+            }
+            
+            // Resolve with what we have so far
+            resolve({
+              code: 1,
+              output: ffmpegOutput + '\nProcess terminated due to timeout',
+              offlineDetected: true
+            });
+          }, 5000);  // Give 5 seconds for graceful shutdown
+        }
       } catch (e) {
         console.error('Error terminating ffmpeg process:', e);
+        activeRecordingProcesses.delete(recordingId);
         resolve({
           code: 1,
           output: ffmpegOutput + '\nProcess timeout - failed to terminate',
@@ -292,11 +315,6 @@ async function recordStream(streamUrl, duration, outputFile) {
   });
 }
 
-// Also update the handleRecordedFile function to be more robust
-
-/**
- * Handle the recorded file
- */
 async function handleRecordedFile(ctx, outputFile, username, duration, timestamp) {
   try {
     // First check if the file exists
@@ -314,102 +332,28 @@ async function handleRecordedFile(ctx, outputFile, username, duration, timestamp
       return false;
     }
     
-    // For larger files, use Glitch to host the download
-    if (fileStats.size > 45 * 1024 * 1024) { // Close to Telegram's 50MB limit
-      await ctx.reply("📦 File is larger than 45MB. Creating download link...");
+    // Format caption
+    const caption = `${username} - ${duration} seconds - Recorded on ${new Date().toLocaleString()}`;
+    
+    try {
+      console.log(`📤 Sending video file (${(fileStats.size/1024/1024).toFixed(2)}MB) to Telegram...`);
       
-      try {
-        // Upload to Glitch
-        const metadata = {
-          username: username,
-          duration: duration,
-          timestamp: timestamp,
-          recordedBy: ctx.message.from.username || ctx.message.from.id
-        };
-        
-        const downloadUrl = await uploadService.uploadToGlitch(outputFile, 'video/mp4', metadata);
-        
-        if (downloadUrl) {
-          await ctx.reply(
-            `📥 *Download Ready!*\n\n` +
-            `Your recording of ${username} (${duration} seconds) is ready to download.\n\n` +
-            `[Click here to download](${downloadUrl})\n\n` +
-            `File size: ${(fileStats.size/1024/1024).toFixed(2)}MB - 16:9 aspect ratio, high quality`,
-            { parse_mode: 'Markdown' }
-          );
-          return true;
-        } else {
-          throw new Error("Failed to generate download URL");
-        }
-      } catch (uploadError) {
-        console.error("Error uploading to Glitch:", uploadError);
-        
-        // Fallback to sending via Telegram with compression
-        await ctx.reply("⚠️ Couldn't create download link. Trying to send via Telegram (may be compressed)...");
-        
-        try {
-          await ctx.replyWithVideo({ 
-            source: outputFile,
-            caption: `${username} - ${duration} seconds - Recorded on ${new Date().toLocaleString()}`
-          }, { 
-            // Add longer timeout to allow for large files
-            timeout: 120000  // 2 minute timeout for upload
-          });
-          return true;
-        } catch (telegramError) {
-          console.error("Error sending via Telegram:", telegramError);
-          await ctx.reply("❌ Failed to send video. The file might be too large for Telegram. Try a shorter duration next time.");
-          return false;
-        }
-      }
-    } else {
-      // If file is under 45MB limit, send it directly
-      try {
-        await ctx.replyWithVideo({ 
-          source: outputFile,
-          filename: `${username}_${timestamp}.mp4`,
-          caption: `${username} - ${duration} seconds - Recorded on ${new Date().toLocaleString()}`
-        }, { 
-          // Add longer timeout to allow for upload
-          timeout: 90000  // 90 second timeout
-        });
-        
-        return true;
-      } catch (sendError) {
-        console.error("Error sending video:", sendError);
-        
-        // Try with Glitch as fallback
-        await ctx.reply("⚠️ Failed to send via Telegram. Creating download link instead...");
-        
-        try {
-          // Upload to Glitch
-          const metadata = {
-            username: username,
-            duration: duration,
-            timestamp: timestamp,
-            recordedBy: ctx.message.from.username || ctx.message.from.id
-          };
-          
-          const downloadUrl = await uploadService.uploadToGlitch(outputFile, 'video/mp4', metadata);
-          
-          if (downloadUrl) {
-            await ctx.reply(
-              `📥 *Download Ready!*\n\n` +
-              `Your recording of ${username} (${duration} seconds) is ready to download.\n\n` +
-              `[Click here to download](${downloadUrl})\n\n` +
-              `File size: ${(fileStats.size/1024/1024).toFixed(2)}MB - 16:9 aspect ratio, high quality`,
-              { parse_mode: 'Markdown' }
-            );
-            return true;
-          } else {
-            throw new Error("Failed to generate download URL");
-          }
-        } catch (uploadError) {
-          console.error("Error uploading to Glitch:", uploadError);
-          await ctx.reply("❌ All sending methods failed. Please try a shorter recording duration.");
-          return false;
-        }
-      }
+      // With local Telegram API server, we can send files up to 2GB
+      await ctx.replyWithVideo({ 
+        source: outputFile,
+        filename: `${username}_${timestamp}.mp4`,
+        caption: caption
+      }, { 
+        // Longer timeout for large files
+        timeout: Math.max(60000, fileStats.size / 10000) // 1 minute minimum, or longer for large files
+      });
+      
+      console.log(`✅ Successfully sent video file to Telegram`);
+      return true;
+    } catch (sendError) {
+      console.error("Error sending video:", sendError);
+      await ctx.reply("❌ Failed to send video. Error: " + sendError.message);
+      return false;
     }
   } catch (error) {
     console.error("Error handling recording:", error);
@@ -421,23 +365,13 @@ async function handleRecordedFile(ctx, outputFile, username, duration, timestamp
 /**
  * Execute a recording command
  */
-/**
- * Execute a recording command
- */
-// In services/recordService.js, modify the executeRecord function:
-
 async function executeRecord(ctx, username, duration) {
   const chatId = ctx.message.chat.id;
   const userId = ctx.message.from.id;
+  const recordingId = `rec_${chatId}_${userId}_${Date.now()}`;
   
   // Lazy import to avoid circular dependency
   const monitorService = require('./monitorService');
-  
-  // Check if already recording this username
-  if (memoryService.isRecordingActive(chatId, username)) {
-    await ctx.reply(`⚠️ You're already recording ${username}. Please wait for the current recording to finish.`);
-    return false;
-  }
   
   // Apply rate limiting for free users
   const rateLimit = canUserRecord(userId);
@@ -468,15 +402,13 @@ async function executeRecord(ctx, username, duration) {
     adjustedDuration = config.PREMIUM_USER_MAX_DURATION;
   }
   
-  // Add to active recordings
-  const recordingKey = memoryService.addActiveRecording(chatId, username, userId, adjustedDuration, isPremium);
+  // Don't check for active recording - allow concurrent recordings
   
   // Check if the streamer is live
   await ctx.reply(`🔍 Checking if ${username} is live...${isPremium ? ' [✨ Premium]' : ''}`);
   const status = await monitorService.checkStripchatStatus(username);
   
   if (!status.isLive) {
-    memoryService.removeActiveRecording(recordingKey);
     await ctx.reply(`❌ ${username} is not live right now. Cannot record.`);
     return false;
   }
@@ -520,7 +452,7 @@ async function executeRecord(ctx, username, duration) {
     );
     
     const timestamp = Date.now();
-    const baseFileName = `${username}_${timestamp}`;
+    const baseFileName = `${username}_${userId}_${timestamp}`;
     const outputFile = `/tmp/${baseFileName}.mp4`;
     
     // Test if the URL works first
@@ -538,10 +470,7 @@ async function executeRecord(ctx, username, duration) {
       `🎬 Found working stream! Recording ${adjustedDuration} seconds...`
     );
     
-    const result = await recordStream(streamUrl, adjustedDuration, outputFile);
-    
-    // Remove from active recordings
-    memoryService.removeActiveRecording(recordingKey);
+    const result = await recordStream(streamUrl, adjustedDuration, outputFile, recordingId);
     
     if (result.offlineDetected) {
       await ctx.reply("📹 Stream went offline, but we saved what we could!");
@@ -581,8 +510,27 @@ async function executeRecord(ctx, username, duration) {
   return recordingSuccess;
 }
 
+/**
+ * Cancel an active recording
+ */
+function cancelRecording(recordingId) {
+  if (activeRecordingProcesses.has(recordingId)) {
+    try {
+      const process = activeRecordingProcesses.get(recordingId);
+      process.kill('SIGTERM');
+      activeRecordingProcesses.delete(recordingId);
+      return true;
+    } catch (error) {
+      console.error(`Error cancelling recording ${recordingId}:`, error);
+      return false;
+    }
+  }
+  return false;
+}
+
 module.exports = {
   canUserRecord,
   updateUserRecordingTime,
-  executeRecord
+  executeRecord,
+  cancelRecording
 };
