@@ -54,7 +54,18 @@ bot.catch((err, ctx) => {
 // Start the bot
 bot.launch().then(async () => {
   console.log("Telegram bot is up and running!");
-  
+  // In index.js, after initializing the bot but before registering commands
+(async () => {
+  try {
+    // Load data models
+    await monitoredUsersModel.loadMonitoredUsers();
+    await premiumUsersModel.loadPremiumUsers(); // Ensure this is called
+    await autoRecordConfigModel.loadAutoRecordConfig();
+    console.log('All data models loaded successfully');
+  } catch (err) {
+    console.error('Error loading data models:', err);
+  }
+})();
   // Set bot commands for the menu
   await bot.telegram.setMyCommands([
     { command: 'add', description: 'Add a new streamer to monitor' },

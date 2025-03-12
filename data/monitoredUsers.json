@@ -1,14 +1,11 @@
 [
   {
-    "username": "baeasian",
+    "username": "Mila_Black",
     "chatId": 6222095069,
-    "isLive": true,
-    "lastChecked": "2025-03-11T19:42:12.711Z",
-    "recentUrls": [],
-    "hasGoal": false,
-    "goalProgress": 0,
-    "goalText": "",
-    "goalCompleted": false,
-    "lastGoalCompleted": false
+    "isLive": false,
+    "lastChecked": "2025-03-11T23:51:12.820Z",
+    "recentUrls": [
+      "https://media-hls.doppiocdn.com/b-hls-08/185721227/185721227_720p.m3u8?playlistType=lowLatency"
+    ]
   }
 ]

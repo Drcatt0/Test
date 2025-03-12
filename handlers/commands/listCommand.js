@@ -1,11 +1,15 @@
+// In handlers/commands/listCommand.js
+
 const { Markup } = require('telegraf');
 const monitorService = require('../../services/monitorService');
+const monitoredUsersModel = require('../../models/monitoredUsers');
 
 /**
  * Handler for the /list command
  */
-async function handler(ctx, monitoredUsers) {
+async function handler(ctx) {
   const chatId = ctx.message.chat.id;
+  const monitoredUsers = monitoredUsersModel.getAllMonitoredUsers();
   const subbedUsers = monitoredUsers.filter(u => u.chatId === chatId);
 
   if (subbedUsers.length === 0) {
@@ -77,6 +81,12 @@ async function handler(ctx, monitoredUsers) {
         
         message += `   ${progressBar} ${progressPercentage}%\n`;
         
+        // Add token information if available
+        if (goal.currentAmount > 0) {
+          message += `   💰 *Tokens:* ${goal.currentAmount} tk\n`;
+        }
+        
+        // Add goal text if available
         if (goal.text) {
           message += `   🎯 *Goal:* ${goal.text}\n`;
         }
@@ -118,4 +128,28 @@ async function handler(ctx, monitoredUsers) {
   }
 }
 
+// Action handler for the refresh button
+async function handleRefreshAction(ctx) {
+  const chatId = parseInt(ctx.match[1], 10);
+  
+  // Re-run the handler with the chat ID
+  await handler({
+    message: { chat: { id: chatId } },
+    telegram: ctx.telegram,
+    reply: ctx.telegram.sendMessage.bind(ctx.telegram, chatId)
+  });
+  
+  // Answer the callback query
+  await ctx.answerCbQuery('Refreshed streamer statuses');
+}
+
+module.exports = {
+  handler,
+  actions: [
+    {
+      pattern: /^refreshList:(-?\d+)$/,
+      handler: handleRefreshAction
+    }
+  ]
+};
 module.exports = { handler };

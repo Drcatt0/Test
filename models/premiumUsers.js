@@ -2,40 +2,108 @@
  * Premium Users Data Model
  */
 const fs = require('fs-extra');
+const path = require('path'); // Add this line
 const config = require('../config/config');
 
 // In-memory storage
 let premiumUsers = {};
+
+// In models/premiumUsers.js, modify these functions:
 
 /**
  * Load premium users from JSON file
  */
 async function loadPremiumUsers() {
   try {
+    console.log(`Attempting to load premium users from ${config.PREMIUM_USERS_PATH}`);
+    
+    // First check if the file exists
+    if (!fs.existsSync(config.PREMIUM_USERS_PATH)) {
+      console.log("Premium users file does not exist. Creating a new one.");
+      premiumUsers = {};
+      await savePremiumUsers();
+      return premiumUsers;
+    }
+    
     const data = await fs.readFile(config.PREMIUM_USERS_PATH, 'utf-8');
-    premiumUsers = JSON.parse(data);
+    
+    if (!data || data.trim() === '') {
+      console.log("Premium users file is empty. Starting fresh.");
+      premiumUsers = {};
+      await savePremiumUsers();
+      return premiumUsers;
+    }
+    
+    try {
+      premiumUsers = JSON.parse(data);
+      console.log("Successfully parsed premium users data");
+    } catch (parseError) {
+      console.error("Error parsing premium users JSON:", parseError);
+      // If we can't parse the file, back it up and start fresh
+      const backupPath = `${config.PREMIUM_USERS_PATH}.backup-${Date.now()}`;
+      await fs.copyFile(config.PREMIUM_USERS_PATH, backupPath);
+      console.log(`Backed up corrupt file to ${backupPath}`);
+      premiumUsers = {};
+    }
+    
+    // Convert string keys to ensure consistency
+    const cleanedData = {};
+    for (const [key, value] of Object.entries(premiumUsers)) {
+      cleanedData[key.toString()] = value;
+    }
+    premiumUsers = cleanedData;
     
     // Clean up expired premium users
     const now = new Date();
     let changes = false;
     
     for (const [userId, data] of Object.entries(premiumUsers)) {
-      if (new Date(data.expiresAt) < now) {
+      if (!data.expiresAt) {
         delete premiumUsers[userId];
         changes = true;
+        continue;
+      }
+      
+      try {
+        if (new Date(data.expiresAt) < now) {
+          console.log(`User ${userId} premium has expired`);
+          delete premiumUsers[userId];
+          changes = true;
+        } else {
+          console.log(`User ${userId} has premium until ${data.expiresAt}`);
+        }
+      } catch (dateError) {
+        console.error(`Invalid expiry date for user ${userId}:`, dateError);
+        // Fix the expiry date if possible, otherwise remove
+        if (typeof data.activatedAt === 'string' && data.activatedAt) {
+          try {
+            const activatedDate = new Date(data.activatedAt);
+            data.expiresAt = new Date(activatedDate.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString();
+            changes = true;
+          } catch (e) {
+            delete premiumUsers[userId];
+            changes = true;
+          }
+        } else {
+          delete premiumUsers[userId];
+          changes = true;
+        }
       }
     }
     
     if (changes) {
+      console.log("Changes made to premium users data, saving...");
       await savePremiumUsers();
     }
     
     console.log(`Loaded ${Object.keys(premiumUsers).length} premium users`);
   } catch (error) {
-    console.log("No existing premiumUsers.json found. Starting fresh.");
+    console.error("Error loading premium users:", error);
+    console.log("Starting with empty premium users data");
     premiumUsers = {};
     await savePremiumUsers();
   }
+  
   return premiumUsers;
 }
 
@@ -44,33 +112,26 @@ async function loadPremiumUsers() {
  */
 async function savePremiumUsers() {
   try {
-    await fs.writeFile(config.PREMIUM_USERS_PATH, JSON.stringify(premiumUsers, null, 2));
+    // Ensure directory exists
+    const dir = path.dirname(config.PREMIUM_USERS_PATH);
+    await fs.ensureDir(dir);
+    
+    console.log(`Saving ${Object.keys(premiumUsers).length} premium users to ${config.PREMIUM_USERS_PATH}`);
+    
+    // Create a copy of the data for saving
+    const dataToSave = JSON.stringify(premiumUsers, null, 2);
+    
+    // Use atomic write pattern - write to temp file then rename
+    const tempFile = `${config.PREMIUM_USERS_PATH}.tmp`;
+    await fs.writeFile(tempFile, dataToSave, 'utf8');
+    await fs.rename(tempFile, config.PREMIUM_USERS_PATH);
+    
+    console.log("Premium users data saved successfully");
     return true;
   } catch (error) {
-    console.error("Error saving premiumUsers.json:", error);
+    console.error("Error saving premium users:", error);
     return false;
   }
-}
-
-/**
- * Check if a user has premium status
- */
-function isPremiumUser(userId) {
-  const userIdStr = userId.toString();
-  if (!premiumUsers[userIdStr]) return false;
-  
-  const now = new Date();
-  const expiresAt = new Date(premiumUsers[userIdStr].expiresAt);
-  
-  // Check if premium has expired
-  if (now > expiresAt) {
-    // Premium expired, clean up
-    delete premiumUsers[userIdStr];
-    savePremiumUsers();
-    return false;
-  }
-  
-  return true;
 }
 
 /**
@@ -87,9 +148,15 @@ async function addPremiumUser(userId, username, key) {
     key: key
   };
   
-  await savePremiumUsers();
+  console.log(`Added premium user ${userIdStr} with expiry date ${expiryDate.toISOString()}`);
+  
+  const saveResult = await savePremiumUsers();
+  if (!saveResult) {
+    console.error(`Failed to save premium status for user ${userIdStr}`);
+  }
+  
   return {
-    success: true,
+    success: saveResult,
     expiryDate: expiryDate
   };
 }
@@ -136,10 +203,28 @@ function markKeyAsUsed(key) {
   }
   return false;
 }
-
+/**
+ * Check if a user has premium status
+ */
+function isPremiumUser(userId) {
+  const userIdStr = userId.toString();
+  if (!premiumUsers[userIdStr]) return false;
+  
+  const now = new Date();
+  const expiresAt = new Date(premiumUsers[userIdStr].expiresAt);
+  
+  // Check if premium has expired
+  if (now > expiresAt) {
+    // Premium expired, clean up
+    delete premiumUsers[userIdStr];
+    savePremiumUsers();
+    return false;
+  }
+  
+  return true;
+}
 module.exports = {
   loadPremiumUsers,
-  savePremiumUsers,
   isPremiumUser,
   addPremiumUser,
   getPremiumUserDetails,

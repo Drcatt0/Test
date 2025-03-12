@@ -5,7 +5,6 @@ const fs = require('fs-extra');
 const path = require('path');
 const { spawn } = require('child_process');
 const browserService = require('./browserService');
-const monitorService = require('./monitorService');
 const monitoredUsersModel = require('../models/monitoredUsers');
 const premiumUsersModel = require('../models/premiumUsers');
 const memoryService = require('./memoryService');
@@ -197,13 +196,14 @@ async function testStreamUrl(streamUrl) {
   }
 }
 
+// In services/recordService.js, update the recordStream function
+
 /**
  * Record a stream
  */
 async function recordStream(streamUrl, duration, outputFile) {
   return new Promise((resolve, reject) => {
     // Use the configured ffmpeg arguments and add specific ones for this recording
-    // This is where we fix the aspect ratio issue - using 16:9 instead of square video
     const ffmpegArgs = [
       '-i', streamUrl,
       '-t', duration.toString(),
@@ -240,29 +240,73 @@ async function recordStream(streamUrl, duration, outputFile) {
       });
     });
     
-    // Set a timeout that's slightly longer than the recording should take
-    const timeoutDuration = (duration * 1000) + 30000; // 30 seconds buffer
+    ffmpegProcess.on('error', (err) => {
+      console.error('FFmpeg process error:', err);
+      resolve({
+        code: 1,
+        output: `FFmpeg error: ${err.message}`,
+        offlineDetected: true
+      });
+    });
+    
+    // Set a timeout that's substantially longer than the recording should take
+    // For short recordings, give at least 5 minutes; for longer ones, use 3x the duration
+    const timeoutDuration = Math.max(300000, (duration * 1000) * 3); // At least 5 minutes or 3x the duration
     const timeout = setTimeout(() => {
-      ffmpegProcess.kill('SIGTERM');
+      console.log(`Recording timeout triggered after ${timeoutDuration/1000} seconds`);
       
-      // Give process time to shut down gracefully
-      setTimeout(() => {
-        // Force kill if still running
-        try { ffmpegProcess.kill('SIGKILL'); } catch (e) {}
-      }, 3000);
+      // Don't reject, just try to terminate gracefully
+      try {
+        ffmpegProcess.kill('SIGTERM');
+        
+        // Give process time to shut down gracefully
+        setTimeout(() => {
+          // Force kill if still running
+          try { 
+            ffmpegProcess.kill('SIGKILL'); 
+          } catch (e) {
+            console.error('Error killing ffmpeg process:', e);
+          }
+          
+          // Resolve with what we have so far
+          resolve({
+            code: 1,
+            output: ffmpegOutput + '\nProcess terminated due to timeout',
+            offlineDetected: true
+          });
+        }, 5000);  // Give 5 seconds for graceful shutdown
+      } catch (e) {
+        console.error('Error terminating ffmpeg process:', e);
+        resolve({
+          code: 1,
+          output: ffmpegOutput + '\nProcess timeout - failed to terminate',
+          offlineDetected: true
+        });
+      }
     }, timeoutDuration);
     
     // Clear the timeout if process ends before timeout
-    ffmpegProcess.on('close', () => clearTimeout(timeout));
+    ffmpegProcess.on('close', () => {
+      clearTimeout(timeout);
+    });
   });
 }
+
+// Also update the handleRecordedFile function to be more robust
 
 /**
  * Handle the recorded file
  */
 async function handleRecordedFile(ctx, outputFile, username, duration, timestamp) {
   try {
-    // First check if the file exists and is a reasonable size
+    // First check if the file exists
+    const fileExists = await fs.pathExists(outputFile);
+    if (!fileExists) {
+      await ctx.reply("❌ Recording failed - output file was not created.");
+      return false;
+    }
+    
+    // Check if the file is a reasonable size
     const fileStats = await fs.stat(outputFile);
     
     if (fileStats.size < 10000) {
@@ -307,6 +351,9 @@ async function handleRecordedFile(ctx, outputFile, username, duration, timestamp
           await ctx.replyWithVideo({ 
             source: outputFile,
             caption: `${username} - ${duration} seconds - Recorded on ${new Date().toLocaleString()}`
+          }, { 
+            // Add longer timeout to allow for large files
+            timeout: 120000  // 2 minute timeout for upload
           });
           return true;
         } catch (telegramError) {
@@ -322,6 +369,9 @@ async function handleRecordedFile(ctx, outputFile, username, duration, timestamp
           source: outputFile,
           filename: `${username}_${timestamp}.mp4`,
           caption: `${username} - ${duration} seconds - Recorded on ${new Date().toLocaleString()}`
+        }, { 
+          // Add longer timeout to allow for upload
+          timeout: 90000  // 90 second timeout
         });
         
         return true;
@@ -371,9 +421,17 @@ async function handleRecordedFile(ctx, outputFile, username, duration, timestamp
 /**
  * Execute a recording command
  */
+/**
+ * Execute a recording command
+ */
+// In services/recordService.js, modify the executeRecord function:
+
 async function executeRecord(ctx, username, duration) {
   const chatId = ctx.message.chat.id;
   const userId = ctx.message.from.id;
+  
+  // Lazy import to avoid circular dependency
+  const monitorService = require('./monitorService');
   
   // Check if already recording this username
   if (memoryService.isRecordingActive(chatId, username)) {
@@ -423,17 +481,25 @@ async function executeRecord(ctx, username, duration) {
     return false;
   }
   
-  await ctx.reply(`✅ ${username} is live! Starting recording process...`);
+  const liveMsg = await ctx.reply(`✅ ${username} is live! Starting recording process...`);
   
   // Try to get the model ID
   const modelId = await determineModelId(username);
   
   if (!modelId) {
-    await ctx.reply("🔍 Model ID not found. Trying alternate methods...");
+    await ctx.telegram.editMessageText(
+      chatId, 
+      liveMsg.message_id, 
+      undefined, 
+      `✅ ${username} is live! Starting recording process...\n🔍 Model ID not found. Trying alternate methods...`
+    );
   }
   
   // Generate possible stream URLs
   const possibleStreamUrls = generateStreamUrls(username, modelId);
+  
+  // Create a status message that we'll keep updating
+  const statusMsg = await ctx.reply(`🔄 Testing stream URLs (0/${possibleStreamUrls.length})...`);
   
   // Try each URL until we find one that works
   let recordingSuccess = false;
@@ -444,9 +510,14 @@ async function executeRecord(ctx, username, duration) {
     if (recordingSuccess) break;
     
     urlsTried++;
-    if (urlsTried % 5 === 0) {
-      await ctx.reply(`🔄 Trying URL pattern ${urlsTried}/${totalUrls}...`);
-    }
+    
+    // Update status message every time instead of sending new messages
+    await ctx.telegram.editMessageText(
+      chatId, 
+      statusMsg.message_id, 
+      undefined, 
+      `🔄 Testing stream URLs (${urlsTried}/${totalUrls})...`
+    );
     
     const timestamp = Date.now();
     const baseFileName = `${username}_${timestamp}`;
@@ -460,7 +531,12 @@ async function executeRecord(ctx, username, duration) {
     }
     
     // If the URL works, start recording
-    await ctx.reply(`🎬 Found working stream! Recording ${adjustedDuration} seconds...`);
+    await ctx.telegram.editMessageText(
+      chatId, 
+      statusMsg.message_id, 
+      undefined, 
+      `🎬 Found working stream! Recording ${adjustedDuration} seconds...`
+    );
     
     const result = await recordStream(streamUrl, adjustedDuration, outputFile);
     
@@ -493,6 +569,13 @@ async function executeRecord(ctx, username, duration) {
   
   if (!recordingSuccess) {
     await ctx.reply("❌ Could not find a working stream URL. Please try again later.");
+  }
+  
+  // Clean up the status message after we're done with it
+  try {
+    await ctx.telegram.deleteMessage(chatId, statusMsg.message_id);
+  } catch (e) {
+    console.error("Could not delete status message:", e);
   }
   
   return recordingSuccess;
