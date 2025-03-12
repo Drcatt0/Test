@@ -18,6 +18,11 @@ const monitorService = require('./services/monitorService');
 const memoryService = require('./services/memoryService');
 const browserService = require('./services/browserService');
 
+// Import models
+const monitoredUsersModel = require('./models/monitoredUsers');
+const premiumUsersModel = require('./models/premiumUsers');
+const autoRecordConfigModel = require('./models/autoRecordConfig');
+
 // Initialize the bot
 const bot = new Telegraf(config.BOT_TOKEN);
 
@@ -54,32 +59,34 @@ bot.catch((err, ctx) => {
 // Start the bot
 bot.launch().then(async () => {
   console.log("Telegram bot is up and running!");
-  // In index.js, after initializing the bot but before registering commands
-(async () => {
+  
   try {
     // Load data models
+    console.log('Loading data models...');
     await monitoredUsersModel.loadMonitoredUsers();
-    await premiumUsersModel.loadPremiumUsers(); // Ensure this is called
+    await premiumUsersModel.loadPremiumUsers();
     await autoRecordConfigModel.loadAutoRecordConfig();
     console.log('All data models loaded successfully');
+    
+    // Set bot commands for the menu
+    await bot.telegram.setMyCommands([
+      { command: 'add', description: 'Add a new streamer to monitor' },
+      { command: 'remove', description: 'Remove a monitored streamer' },
+      { command: 'list', description: 'List all monitored streamers' },
+      { command: 'record', description: 'Record a live stream' },
+      { command: 'premium', description: 'View premium info or activate a key' },
+      { command: 'autorecord', description: 'Configure automatic goal recording (premium)' },
+      { command: 'start', description: 'Show welcome message and command list' }
+    ]);
+    
+    // Start monitoring and cleaning routines
+    monitorService.startMonitoring(bot);
+    memoryService.startCleanupRoutines();
+    
+    console.log('Bot startup complete');
   } catch (err) {
-    console.error('Error loading data models:', err);
+    console.error('Error during startup:', err);
   }
-})();
-  // Set bot commands for the menu
-  await bot.telegram.setMyCommands([
-    { command: 'add', description: 'Add a new streamer to monitor' },
-    { command: 'remove', description: 'Remove a monitored streamer' },
-    { command: 'list', description: 'List all monitored streamers' },
-    { command: 'record', description: 'Record a live stream' },
-    { command: 'premium', description: 'View premium info or activate a key' },
-    { command: 'autorecord', description: 'Configure automatic goal recording (premium)' },
-    { command: 'start', description: 'Show welcome message and command list' }
-  ]);
-  
-  // Start monitoring and cleaning routines
-  monitorService.startMonitoring(bot);
-  memoryService.startCleanupRoutines();
   
   // Graceful shutdown handlers
   process.once('SIGINT', () => {

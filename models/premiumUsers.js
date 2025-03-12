@@ -2,13 +2,11 @@
  * Premium Users Data Model
  */
 const fs = require('fs-extra');
-const path = require('path'); // Add this line
+const path = require('path'); // Added this import
 const config = require('../config/config');
 
 // In-memory storage
 let premiumUsers = {};
-
-// In models/premiumUsers.js, modify these functions:
 
 /**
  * Load premium users from JSON file
@@ -203,6 +201,7 @@ function markKeyAsUsed(key) {
   }
   return false;
 }
+
 /**
  * Check if a user has premium status
  */
@@ -223,6 +222,7 @@ function isPremiumUser(userId) {
   
   return true;
 }
+
 module.exports = {
   loadPremiumUsers,
   isPremiumUser,

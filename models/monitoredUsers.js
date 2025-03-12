@@ -2,6 +2,7 @@
  * Monitored Users Data Model
  */
 const fs = require('fs-extra');
+const path = require('path'); // Added this import for path manipulation
 const config = require('../config/config');
 
 // In-memory storage
@@ -28,7 +29,16 @@ async function loadMonitoredUsers() {
  */
 async function saveMonitoredUsers() {
   try {
-    await fs.writeFile(config.JSON_FILE_PATH, JSON.stringify(monitoredUsers, null, 2));
+    // Ensure the data directory exists
+    const dir = path.dirname(config.JSON_FILE_PATH);
+    await fs.ensureDir(dir);
+    
+    // Write to a temp file first, then rename for atomic operation
+    const tempFile = `${config.JSON_FILE_PATH}.tmp`;
+    await fs.writeFile(tempFile, JSON.stringify(monitoredUsers, null, 2));
+    await fs.rename(tempFile, config.JSON_FILE_PATH);
+    
+    console.log(`Saved ${monitoredUsers.length} monitored users to disk`);
     return true;
   } catch (error) {
     console.error("Error saving monitoredUsers.json:", error);

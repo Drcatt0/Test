@@ -58,9 +58,13 @@ module.exports = {
   MAX_MEMORY_USAGE_MB: 500,
   BROWSER_INACTIVITY_TIMEOUT: 5 * 60 * 1000, // 5 minutes in milliseconds
   
-  // Monitoring intervals
-  MONITOR_INTERVAL: 60 * 1000, // Check every minute
+  // Monitoring intervals - UPDATED
+  MONITOR_INTERVAL: 5 * 60 * 1000, // Check every 5 minutes (was 1 min)
+  GOAL_CHECK_INTERVAL: 15 * 1000, // Check goals every 15 seconds (NEW)
   MEMORY_CHECK_INTERVAL: 5 * 60 * 1000, // Check memory every 5 minutes
   FILE_CLEANUP_INTERVAL: 30 * 60 * 1000, // Clean files every 30 minutes
   RECORDING_CLEANUP_INTERVAL: 60 * 1000, // Clean stale recordings every minute
+  
+  // Browser pool settings
+  BROWSER_POOL_SIZE: 3, // Maximum number of concurrent browser instances
 };

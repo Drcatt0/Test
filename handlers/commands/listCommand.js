@@ -41,7 +41,9 @@ async function handler(ctx) {
       // Fetch current status for each user in the batch
       const batchResults = await Promise.all(batch.map(async (user) => {
         try {
+          console.log(`Checking status for ${user.username} in /list command...`);
           const currentStatus = await monitorService.checkStripchatStatus(user.username);
+          console.log(`Status for ${user.username}: Live=${currentStatus.isLive}, Goal=${currentStatus.goal.active ? `Progress: ${currentStatus.goal.progress}%` : 'None'}`);
           return {
             ...user,
             currentStatus
@@ -76,6 +78,8 @@ async function handler(ctx) {
       // Add goal information if available
       if (isCurrentlyLive && user.currentStatus?.goal?.active) {
         const goal = user.currentStatus.goal;
+        console.log(`Formatting goal for ${user.username}: Progress=${goal.progress}, Text=${goal.text}`); 
+        
         const progressBar = monitorService.generateProgressBar(goal.progress);
         const progressPercentage = Math.floor(goal.progress);
         
@@ -86,9 +90,19 @@ async function handler(ctx) {
           message += `   💰 *Tokens:* ${goal.currentAmount} tk\n`;
         }
         
-        // Add goal text if available
+        // Add goal text if available - sanitize to prevent emoji issues
         if (goal.text) {
-          message += `   🎯 *Goal:* ${goal.text}\n`;
+          // Replace problematic emoji/text with safer alternatives
+          const sanitizedText = goal.text
+            .replace(/BRA|bra|👙/g, "👚") // Replace bra text/emoji with shirt emoji
+            .replace(/TAKE OFF/g, "OUTFIT") // Replace "TAKE OFF" with "OUTFIT"
+            .replace(/OFF/g, "") // Remove standalone "OFF" text
+            .replace(/TAKE/g, "") // Remove standalone "TAKE" text
+            .replace(/🚫|⛔|🔞/g, "") // Remove prohibition emojis
+            .replace(/\s+/g, " ") // Normalize spaces
+            .trim(); // Trim extra spaces
+          
+          message += `   🎯 *Goal:* ${sanitizedText || "Special Goal"}\n`;
         }
         
         if (goal.completed) {

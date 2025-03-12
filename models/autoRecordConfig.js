@@ -2,6 +2,7 @@
  * Auto Record Configuration Data Model
  */
 const fs = require('fs-extra');
+const path = require('path'); // Added this import
 const config = require('../config/config');
 
 // In-memory storage
@@ -28,7 +29,16 @@ async function loadAutoRecordConfig() {
  */
 async function saveAutoRecordConfig() {
   try {
-    await fs.writeFile(config.AUTO_RECORD_CONFIG_PATH, JSON.stringify(autoRecordConfig, null, 2));
+    // Ensure directory exists
+    const dir = path.dirname(config.AUTO_RECORD_CONFIG_PATH);
+    await fs.ensureDir(dir);
+    
+    // Write to temp file then rename for atomic operation
+    const tempFile = `${config.AUTO_RECORD_CONFIG_PATH}.tmp`;
+    await fs.writeFile(tempFile, JSON.stringify(autoRecordConfig, null, 2));
+    await fs.rename(tempFile, config.AUTO_RECORD_CONFIG_PATH);
+    
+    console.log(`Saved auto record config for ${Object.keys(autoRecordConfig).length} users`);
     return true;
   } catch (error) {
     console.error("Error saving autoRecordConfig.json:", error);
