@@ -69,7 +69,7 @@ async function getBrowser() {
     tempBrowser.isTemporary = true;
     
     console.log('Temporary browser created (will not be added to pool)');
-    return tempBrowser;
+		return tempBrowser;
   } catch (error) {
     console.error("Error getting browser from pool:", error);
     return null;

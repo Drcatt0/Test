@@ -1,0 +1,571 @@
+
+> stripchat-monitor-bot@1.0.0 start
+> node index.js
+
+SSL certificates not found, starting with HTTP...
+🚀 Starting Stripchat Monitor Bot...
+File server running on port 3000
+🌐 Server URL: http://localhost:3000
+📁 Data directory is ready
+📚 Loading data models...
+📄 Read 832 bytes from ./data/monitoredUsers.json
+🔍 Successfully parsed JSON data
+✅ Loaded 4 monitored users
+Saved 4 monitored users to disk
+✅ Loaded 4 monitored users
+📂 Checking for premium users file at ./data/premiumUsers.json
+📄 Read 177 bytes from premium users file
+🔍 Successfully parsed premium users JSON data
+✅ User 6222095069 has premium until 2025-04-11T03:14:02.857Z
+✅ Loaded 1 premium users
+Saving 1 premium users to ./data/premiumUsers.json
+Premium users data saved successfully
+✅ Loaded 1 premium users
+📂 Checking for auto record config at ./data/autoRecordConfig.json
+📄 Read 190 bytes from auto record config file
+🔍 Successfully parsed auto record config JSON data
+✅ Loaded auto record config for 1 users
+📝 Attempting to write temp config file: ./data/autoRecordConfig.json.tmp
+📂 Renaming ./data/autoRecordConfig.json.tmp → ./data/autoRecordConfig.json
+💾 Successfully saved auto record config to ./data/autoRecordConfig.json
+✅ Loaded auto-record config for 1 users
+✅ All data models loaded successfully
+Registered command: add
+Registered command: autorecord
+Registered command: list
+Registered command: premium
+Registered command: record
+Registered command: remove
+Registered command: start
+All commands registered
+Message handler registered
+Added premium user 7266244734 with expiry date 2025-04-11T06:15:25.322Z
+Saving 2 premium users to ./data/premiumUsers.json
+Premium users data saved successfully
+Created new browser instance #1. Active browsers: 1/1
+Released browser. Active browsers: 0/1
+URL https://media-hls.doppiocdn.com/b-hls-08/92849958/92849958_1080p60.m3u8?playlistType=lowLatency failed test
+URL https://edge-hls.doppiocdn.com/hls/92849958/master/92849958_1080p60.m3u8?playlistType=lowLatency failed test
+URL https://media-hls.doppiocdn.com/b-hls-08/92849958/92849958_720p60.m3u8?playlistType=lowLatency failed test
+URL https://edge-hls.doppiocdn.com/hls/92849958/master/92849958_720p60.m3u8?playlistType=lowLatency failed test
+Starting ffmpeg with args: -i https://media-hls.doppiocdn.com/b-hls-08/92849958/92849958_720p.m3u8?playlistType=lowLatency -t 300 -c:v libx264 -c:a aac -b:v 2500k -b:a 128k -vf scale=1280:720,setsar=1:1 -preset fast -y -err_detect ignore_err -reconnect 1 -reconnect_at_eof 1 -reconnect_streamed 1 -reconnect_delay_max 5 /tmp/Juliette_Sunshine_7266244734_1741760184985.mp4
+Using existing browser instance #1. Active browsers: 1/1
+Released browser. Active browsers: 0/1
+Starting ffmpeg with args: -i https://media-hls.doppiocdn.com/b-hls-08/121249934/121249934_1080p60.m3u8?playlistType=lowLatency -t 600 -c:v libx264 -c:a aac -b:v 2500k -b:a 128k -vf scale=1280:720,setsar=1:1 -preset fast -y -err_detect ignore_err -reconnect 1 -reconnect_at_eof 1 -reconnect_streamed 1 -reconnect_delay_max 5 /tmp/Aoki_sweet_6222095069_1741760201171.mp4
+📤 Sending video file (89.75MB) to Telegram...
+Error sending video: TelegramError: 413: Request Entity Too Large
+    at Telegram.callApi (/home/drcatto/stripchat-monitor-bot/node_modules/telegraf/lib/core/network/client.js:315:19)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async handleRecordedFile (/home/drcatto/stripchat-monitor-bot/services/recordService.js:342:7)
+    at async Object.executeRecord (/home/drcatto/stripchat-monitor-bot/services/recordService.js:484:21)
+    at async handler (/home/drcatto/stripchat-monitor-bot/handlers/commands/recordCommand.js:23:3) {
+  response: {
+    ok: false,
+    error_code: 413,
+    description: 'Request Entity Too Large'
+  },
+  on: {
+    method: 'sendVideo',
+    payload: {
+      chat_id: 7266244734,
+      video: [Object],
+      message_thread_id: undefined,
+      timeout: 60000
+    }
+  }
+}
+Memory usage: 183MB (RSS), Heap: 17MB / 21MB
+Starting ffmpeg with args: -i https://edge-hls.doppiocdn.com/hls/92849958/master/92849958_720p.m3u8?playlistType=lowLatency -t 300 -c:v libx264 -c:a aac -b:v 2500k -b:a 128k -vf scale=1280:720,setsar=1:1 -preset fast -y -err_detect ignore_err -reconnect 1 -reconnect_at_eof 1 -reconnect_streamed 1 -reconnect_delay_max 5 /tmp/Juliette_Sunshine_7266244734_1741760543721.mp4
+Closed 1 inactive browsers
+📤 Sending video file (89.36MB) to Telegram...
+Error sending video: TelegramError: 413: Request Entity Too Large
+    at Telegram.callApi (/home/drcatto/stripchat-monitor-bot/node_modules/telegraf/lib/core/network/client.js:315:19)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async handleRecordedFile (/home/drcatto/stripchat-monitor-bot/services/recordService.js:342:7)
+    at async Object.executeRecord (/home/drcatto/stripchat-monitor-bot/services/recordService.js:484:21)
+    at async handler (/home/drcatto/stripchat-monitor-bot/handlers/commands/recordCommand.js:23:3) {
+  response: {
+    ok: false,
+    error_code: 413,
+    description: 'Request Entity Too Large'
+  },
+  on: {
+    method: 'sendVideo',
+    payload: {
+      chat_id: 7266244734,
+      video: [Object],
+      message_thread_id: undefined,
+      timeout: 60000
+    }
+  }
+}
+Memory usage: 186MB (RSS), Heap: 18MB / 20MB
+URL https://media-hls.doppiocdn.com/b-hls-08/92849958/92849958_480p30.m3u8?playlistType=lowLatency failed test
+URL https://edge-hls.doppiocdn.com/hls/92849958/master/92849958_480p30.m3u8?playlistType=lowLatency failed test
+URL https://media-hls.doppiocdn.com/b-hls-08/92849958/92849958_360p30.m3u8?playlistType=lowLatency failed test
+URL https://edge-hls.doppiocdn.com/hls/92849958/master/92849958_360p30.m3u8?playlistType=lowLatency failed test
+URL https://media-hls.doppiocdn.com/b-hls-08/92849958/92849958_240p30.m3u8?playlistType=lowLatency failed test
+URL https://edge-hls.doppiocdn.com/hls/92849958/master/92849958_240p30.m3u8?playlistType=lowLatency failed test
+Starting ffmpeg with args: -i https://media-hls.doppiocdn.com/b-hls-08/92849958/92849958_160p.m3u8?playlistType=lowLatency -t 300 -c:v libx264 -c:a aac -b:v 2500k -b:a 128k -vf scale=1280:720,setsar=1:1 -preset fast -y -err_detect ignore_err -reconnect 1 -reconnect_at_eof 1 -reconnect_streamed 1 -reconnect_delay_max 5 /tmp/Juliette_Sunshine_7266244734_1741760909740.mp4
+📤 Sending video file (88.60MB) to Telegram...
+Error sending video: TelegramError: 413: Request Entity Too Large
+    at Telegram.callApi (/home/drcatto/stripchat-monitor-bot/node_modules/telegraf/lib/core/network/client.js:315:19)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async handleRecordedFile (/home/drcatto/stripchat-monitor-bot/services/recordService.js:342:7)
+    at async Object.executeRecord (/home/drcatto/stripchat-monitor-bot/services/recordService.js:484:21)
+    at async handler (/home/drcatto/stripchat-monitor-bot/handlers/commands/recordCommand.js:23:3) {
+  response: {
+    ok: false,
+    error_code: 413,
+    description: 'Request Entity Too Large'
+  },
+  on: {
+    method: 'sendVideo',
+    payload: {
+      chat_id: 7266244734,
+      video: [Object],
+      message_thread_id: undefined,
+      timeout: 60000
+    }
+  }
+}
+Memory usage: 191MB (RSS), Heap: 18MB / 21MB
+Starting ffmpeg with args: -i https://edge-hls.doppiocdn.com/hls/92849958/master/92849958_160p.m3u8?playlistType=lowLatency -t 300 -c:v libx264 -c:a aac -b:v 2500k -b:a 128k -vf scale=1280:720,setsar=1:1 -preset fast -y -err_detect ignore_err -reconnect 1 -reconnect_at_eof 1 -reconnect_streamed 1 -reconnect_delay_max 5 /tmp/Juliette_Sunshine_7266244734_1741761241010.mp4
+📤 Sending video file (193.98MB) to Telegram...
+Error sending video: TelegramError: 413: Request Entity Too Large
+    at Telegram.callApi (/home/drcatto/stripchat-monitor-bot/node_modules/telegraf/lib/core/network/client.js:315:19)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async handleRecordedFile (/home/drcatto/stripchat-monitor-bot/services/recordService.js:342:7)
+    at async Object.executeRecord (/home/drcatto/stripchat-monitor-bot/services/recordService.js:484:21)
+    at async handler (/home/drcatto/stripchat-monitor-bot/handlers/commands/recordCommand.js:23:3) {
+  response: {
+    ok: false,
+    error_code: 413,
+    description: 'Request Entity Too Large'
+  },
+  on: {
+    method: 'sendVideo',
+    payload: {
+      chat_id: 6222095069,
+      video: [Object],
+      message_thread_id: undefined,
+      timeout: 60000
+    }
+  }
+}
+Memory usage: 289MB (RSS), Heap: 19MB / 22MB
+Starting ffmpeg with args: -i https://edge-hls.doppiocdn.com/hls/121249934/master/121249934_1080p60.m3u8?playlistType=lowLatency -t 600 -c:v libx264 -c:a aac -b:v 2500k -b:a 128k -vf scale=1280:720,setsar=1:1 -preset fast -y -err_detect ignore_err -reconnect 1 -reconnect_at_eof 1 -reconnect_streamed 1 -reconnect_delay_max 5 /tmp/Aoki_sweet_6222095069_1741761406697.mp4
+📤 Sending video file (87.39MB) to Telegram...
+Error sending video: TelegramError: 413: Request Entity Too Large
+    at Telegram.callApi (/home/drcatto/stripchat-monitor-bot/node_modules/telegraf/lib/core/network/client.js:315:19)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async handleRecordedFile (/home/drcatto/stripchat-monitor-bot/services/recordService.js:342:7)
+    at async Object.executeRecord (/home/drcatto/stripchat-monitor-bot/services/recordService.js:484:21)
+    at async handler (/home/drcatto/stripchat-monitor-bot/handlers/commands/recordCommand.js:23:3) {
+  response: {
+    ok: false,
+    error_code: 413,
+    description: 'Request Entity Too Large'
+  },
+  on: {
+    method: 'sendVideo',
+    payload: {
+      chat_id: 7266244734,
+      video: [Object],
+      message_thread_id: undefined,
+      timeout: 60000
+    }
+  }
+}
+Memory usage: 315MB (RSS), Heap: 18MB / 22MB
+URL https://media-hls.doppiocdn.com/b-hls-16/92849958/92849958_1080p60.m3u8?playlistType=lowLatency failed test
+URL https://media-hls.doppiocdn.com/b-hls-16/92849958/92849958_720p60.m3u8?playlistType=lowLatency failed test
+Starting ffmpeg with args: -i https://media-hls.doppiocdn.com/b-hls-16/92849958/92849958_720p.m3u8?playlistType=lowLatency -t 300 -c:v libx264 -c:a aac -b:v 2500k -b:a 128k -vf scale=1280:720,setsar=1:1 -preset fast -y -err_detect ignore_err -reconnect 1 -reconnect_at_eof 1 -reconnect_streamed 1 -reconnect_delay_max 5 /tmp/Juliette_Sunshine_7266244734_1741761590586.mp4
+📤 Sending video file (92.17MB) to Telegram...
+Error sending video: TelegramError: 413: Request Entity Too Large
+    at Telegram.callApi (/home/drcatto/stripchat-monitor-bot/node_modules/telegraf/lib/core/network/client.js:315:19)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async handleRecordedFile (/home/drcatto/stripchat-monitor-bot/services/recordService.js:342:7)
+    at async Object.executeRecord (/home/drcatto/stripchat-monitor-bot/services/recordService.js:484:21)
+    at async handler (/home/drcatto/stripchat-monitor-bot/handlers/commands/recordCommand.js:23:3) {
+  response: {
+    ok: false,
+    error_code: 413,
+    description: 'Request Entity Too Large'
+  },
+  on: {
+    method: 'sendVideo',
+    payload: {
+      chat_id: 7266244734,
+      video: [Object],
+      message_thread_id: undefined,
+      timeout: 60000
+    }
+  }
+}
+Memory usage: 295MB (RSS), Heap: 18MB / 22MB
+URL https://media-hls.doppiocdn.com/b-hls-16/92849958/92849958_480p30.m3u8?playlistType=lowLatency failed test
+URL https://media-hls.doppiocdn.com/b-hls-16/92849958/92849958_360p30.m3u8?playlistType=lowLatency failed test
+URL https://media-hls.doppiocdn.com/b-hls-16/92849958/92849958_240p30.m3u8?playlistType=lowLatency failed test
+Starting ffmpeg with args: -i https://media-hls.doppiocdn.com/b-hls-16/92849958/92849958_160p.m3u8?playlistType=lowLatency -t 300 -c:v libx264 -c:a aac -b:v 2500k -b:a 128k -vf scale=1280:720,setsar=1:1 -preset fast -y -err_detect ignore_err -reconnect 1 -reconnect_at_eof 1 -reconnect_streamed 1 -reconnect_delay_max 5 /tmp/Juliette_Sunshine_7266244734_1741761992088.mp4
+📤 Sending video file (90.71MB) to Telegram...
+Error sending video: TelegramError: 413: Request Entity Too Large
+    at Telegram.callApi (/home/drcatto/stripchat-monitor-bot/node_modules/telegraf/lib/core/network/client.js:315:19)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async handleRecordedFile (/home/drcatto/stripchat-monitor-bot/services/recordService.js:342:7)
+    at async Object.executeRecord (/home/drcatto/stripchat-monitor-bot/services/recordService.js:484:21)
+    at async handler (/home/drcatto/stripchat-monitor-bot/handlers/commands/recordCommand.js:23:3) {
+  response: {
+    ok: false,
+    error_code: 413,
+    description: 'Request Entity Too Large'
+  },
+  on: {
+    method: 'sendVideo',
+    payload: {
+      chat_id: 7266244734,
+      video: [Object],
+      message_thread_id: undefined,
+      timeout: 60000
+    }
+  }
+}
+Memory usage: 296MB (RSS), Heap: 19MB / 23MB
+URL https://media-hls.doppiocdn.com/b-hls-24/92849958/92849958_1080p60.m3u8?playlistType=lowLatency failed test
+URL https://media-hls.doppiocdn.com/b-hls-24/92849958/92849958_720p60.m3u8?playlistType=lowLatency failed test
+Starting ffmpeg with args: -i https://media-hls.doppiocdn.com/b-hls-24/92849958/92849958_720p.m3u8?playlistType=lowLatency -t 300 -c:v libx264 -c:a aac -b:v 2500k -b:a 128k -vf scale=1280:720,setsar=1:1 -preset fast -y -err_detect ignore_err -reconnect 1 -reconnect_at_eof 1 -reconnect_streamed 1 -reconnect_delay_max 5 /tmp/Juliette_Sunshine_7266244734_1741762343489.mp4
+📤 Sending video file (89.75MB) to Telegram...
+Error sending video: TelegramError: 413: Request Entity Too Large
+    at Telegram.callApi (/home/drcatto/stripchat-monitor-bot/node_modules/telegraf/lib/core/network/client.js:315:19)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async handleRecordedFile (/home/drcatto/stripchat-monitor-bot/services/recordService.js:342:7)
+    at async Object.executeRecord (/home/drcatto/stripchat-monitor-bot/services/recordService.js:484:21)
+    at async handler (/home/drcatto/stripchat-monitor-bot/handlers/commands/recordCommand.js:23:3) {
+  response: {
+    ok: false,
+    error_code: 413,
+    description: 'Request Entity Too Large'
+  },
+  on: {
+    method: 'sendVideo',
+    payload: {
+      chat_id: 7266244734,
+      video: [Object],
+      message_thread_id: undefined,
+      timeout: 60000
+    }
+  }
+}
+Memory usage: 285MB (RSS), Heap: 20MB / 24MB
+URL https://media-hls.doppiocdn.com/b-hls-24/92849958/92849958_480p30.m3u8?playlistType=lowLatency failed test
+URL https://media-hls.doppiocdn.com/b-hls-24/92849958/92849958_360p30.m3u8?playlistType=lowLatency failed test
+URL https://media-hls.doppiocdn.com/b-hls-24/92849958/92849958_240p30.m3u8?playlistType=lowLatency failed test
+URL https://media-hls.doppiocdn.com/b-hls-24/92849958/92849958_160p.m3u8?playlistType=lowLatency failed test
+URL https://media-hls.doppiocdn.com/b-hls-32/92849958/92849958_1080p60.m3u8?playlistType=lowLatency failed test
+URL https://media-hls.doppiocdn.com/b-hls-32/92849958/92849958_720p60.m3u8?playlistType=lowLatency failed test
+URL https://media-hls.doppiocdn.com/b-hls-32/92849958/92849958_720p.m3u8?playlistType=lowLatency failed test
+URL https://media-hls.doppiocdn.com/b-hls-32/92849958/92849958_480p30.m3u8?playlistType=lowLatency failed test
+URL https://media-hls.doppiocdn.com/b-hls-32/92849958/92849958_360p30.m3u8?playlistType=lowLatency failed test
+URL https://media-hls.doppiocdn.com/b-hls-32/92849958/92849958_240p30.m3u8?playlistType=lowLatency failed test
+URL https://media-hls.doppiocdn.com/b-hls-32/92849958/92849958_160p.m3u8?playlistType=lowLatency failed test
+URL https://media-hls.doppiocdn.com/hls-08/92849958/92849958_1080p60.m3u8?playlistType=lowLatency failed test
+URL https://media-hls.doppiocdn.com/hls-08/92849958/92849958_720p60.m3u8?playlistType=lowLatency failed test
+URL https://media-hls.doppiocdn.com/hls-08/92849958/92849958_720p.m3u8?playlistType=lowLatency failed test
+URL https://media-hls.doppiocdn.com/hls-08/92849958/92849958_480p30.m3u8?playlistType=lowLatency failed test
+URL https://media-hls.doppiocdn.com/hls-08/92849958/92849958_360p30.m3u8?playlistType=lowLatency failed test
+URL https://media-hls.doppiocdn.com/hls-08/92849958/92849958_240p30.m3u8?playlistType=lowLatency failed test
+URL https://media-hls.doppiocdn.com/hls-08/92849958/92849958_160p.m3u8?playlistType=lowLatency failed test
+URL https://media-hls.doppiocdn.com/hls-16/92849958/92849958_1080p60.m3u8?playlistType=lowLatency failed test
+URL https://media-hls.doppiocdn.com/hls-16/92849958/92849958_720p60.m3u8?playlistType=lowLatency failed test
+URL https://media-hls.doppiocdn.com/hls-16/92849958/92849958_720p.m3u8?playlistType=lowLatency failed test
+URL https://media-hls.doppiocdn.com/hls-16/92849958/92849958_480p30.m3u8?playlistType=lowLatency failed test
+URL https://media-hls.doppiocdn.com/hls-16/92849958/92849958_360p30.m3u8?playlistType=lowLatency failed test
+URL https://media-hls.doppiocdn.com/hls-16/92849958/92849958_240p30.m3u8?playlistType=lowLatency failed test
+URL https://media-hls.doppiocdn.com/hls-16/92849958/92849958_160p.m3u8?playlistType=lowLatency failed test
+URL https://media-hls.doppiocdn.com/hls-24/92849958/92849958_1080p60.m3u8?playlistType=lowLatency failed test
+URL https://media-hls.doppiocdn.com/hls-24/92849958/92849958_720p60.m3u8?playlistType=lowLatency failed test
+URL https://media-hls.doppiocdn.com/hls-24/92849958/92849958_720p.m3u8?playlistType=lowLatency failed test
+URL https://media-hls.doppiocdn.com/hls-24/92849958/92849958_480p30.m3u8?playlistType=lowLatency failed test
+URL https://media-hls.doppiocdn.com/hls-24/92849958/92849958_360p30.m3u8?playlistType=lowLatency failed test
+URL https://media-hls.doppiocdn.com/hls-24/92849958/92849958_240p30.m3u8?playlistType=lowLatency failed test
+URL https://media-hls.doppiocdn.com/hls-24/92849958/92849958_160p.m3u8?playlistType=lowLatency failed test
+URL https://media-hls.doppiocdn.com/hls-32/92849958/92849958_1080p60.m3u8?playlistType=lowLatency failed test
+URL https://media-hls.doppiocdn.com/hls-32/92849958/92849958_720p60.m3u8?playlistType=lowLatency failed test
+URL https://media-hls.doppiocdn.com/hls-32/92849958/92849958_720p.m3u8?playlistType=lowLatency failed test
+URL https://media-hls.doppiocdn.com/hls-32/92849958/92849958_480p30.m3u8?playlistType=lowLatency failed test
+URL https://media-hls.doppiocdn.com/hls-32/92849958/92849958_360p30.m3u8?playlistType=lowLatency failed test
+URL https://media-hls.doppiocdn.com/hls-32/92849958/92849958_240p30.m3u8?playlistType=lowLatency failed test
+URL https://media-hls.doppiocdn.com/hls-32/92849958/92849958_160p.m3u8?playlistType=lowLatency failed test
+URL https://media-hls.doppiocdn.com/media-hls08/92849958/92849958_1080p60.m3u8?playlistType=lowLatency failed test
+URL https://media-hls.doppiocdn.com/media-hls08/92849958/92849958_720p60.m3u8?playlistType=lowLatency failed test
+URL https://media-hls.doppiocdn.com/media-hls08/92849958/92849958_720p.m3u8?playlistType=lowLatency failed test
+URL https://media-hls.doppiocdn.com/media-hls08/92849958/92849958_480p30.m3u8?playlistType=lowLatency failed test
+URL https://media-hls.doppiocdn.com/media-hls08/92849958/92849958_360p30.m3u8?playlistType=lowLatency failed test
+URL https://media-hls.doppiocdn.com/media-hls08/92849958/92849958_240p30.m3u8?playlistType=lowLatency failed test
+URL https://media-hls.doppiocdn.com/media-hls08/92849958/92849958_160p.m3u8?playlistType=lowLatency failed test
+URL https://media-hls.doppiocdn.com/media-hls16/92849958/92849958_1080p60.m3u8?playlistType=lowLatency failed test
+URL https://media-hls.doppiocdn.com/media-hls16/92849958/92849958_720p60.m3u8?playlistType=lowLatency failed test
+URL https://media-hls.doppiocdn.com/media-hls16/92849958/92849958_720p.m3u8?playlistType=lowLatency failed test
+URL https://media-hls.doppiocdn.com/media-hls16/92849958/92849958_480p30.m3u8?playlistType=lowLatency failed test
+URL https://media-hls.doppiocdn.com/media-hls16/92849958/92849958_360p30.m3u8?playlistType=lowLatency failed test
+URL https://media-hls.doppiocdn.com/media-hls16/92849958/92849958_240p30.m3u8?playlistType=lowLatency failed test
+URL https://media-hls.doppiocdn.com/media-hls16/92849958/92849958_160p.m3u8?playlistType=lowLatency failed test
+URL https://media-hls.doppiocdn.com/media-hls24/92849958/92849958_1080p60.m3u8?playlistType=lowLatency failed test
+URL https://media-hls.doppiocdn.com/media-hls24/92849958/92849958_720p60.m3u8?playlistType=lowLatency failed test
+📤 Sending video file (191.49MB) to Telegram...
+URL https://media-hls.doppiocdn.com/media-hls24/92849958/92849958_720p.m3u8?playlistType=lowLatency failed test
+URL https://media-hls.doppiocdn.com/media-hls24/92849958/92849958_480p30.m3u8?playlistType=lowLatency failed test
+URL https://media-hls.doppiocdn.com/media-hls24/92849958/92849958_360p30.m3u8?playlistType=lowLatency failed test
+URL https://media-hls.doppiocdn.com/media-hls24/92849958/92849958_240p30.m3u8?playlistType=lowLatency failed test
+URL https://media-hls.doppiocdn.com/media-hls24/92849958/92849958_160p.m3u8?playlistType=lowLatency failed test
+URL https://media-hls.doppiocdn.com/media-hls32/92849958/92849958_1080p60.m3u8?playlistType=lowLatency failed test
+URL https://media-hls.doppiocdn.com/media-hls32/92849958/92849958_720p60.m3u8?playlistType=lowLatency failed test
+URL https://media-hls.doppiocdn.com/media-hls32/92849958/92849958_720p.m3u8?playlistType=lowLatency failed test
+URL https://media-hls.doppiocdn.com/media-hls32/92849958/92849958_480p30.m3u8?playlistType=lowLatency failed test
+URL https://media-hls.doppiocdn.com/media-hls32/92849958/92849958_360p30.m3u8?playlistType=lowLatency failed test
+URL https://media-hls.doppiocdn.com/media-hls32/92849958/92849958_240p30.m3u8?playlistType=lowLatency failed test
+URL https://media-hls.doppiocdn.com/media-hls32/92849958/92849958_160p.m3u8?playlistType=lowLatency failed test
+URL https://edge-hls.doppiocdn.com/hls/92849958/master/92849958_auto.m3u8?playlistType=lowLatency failed test
+URL https://edge-hls.doppiocdn.com/hls/master/Juliette_Sunshine_auto.m3u8 failed test
+Error sending video: TelegramError: 413: Request Entity Too Large
+    at Telegram.callApi (/home/drcatto/stripchat-monitor-bot/node_modules/telegraf/lib/core/network/client.js:315:19)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async handleRecordedFile (/home/drcatto/stripchat-monitor-bot/services/recordService.js:342:7)
+    at async Object.executeRecord (/home/drcatto/stripchat-monitor-bot/services/recordService.js:484:21)
+    at async handler (/home/drcatto/stripchat-monitor-bot/handlers/commands/recordCommand.js:23:3) {
+  response: {
+    ok: false,
+    error_code: 413,
+    description: 'Request Entity Too Large'
+  },
+  on: {
+    method: 'sendVideo',
+    payload: {
+      chat_id: 6222095069,
+      video: [Object],
+      message_thread_id: undefined,
+      timeout: 60000
+    }
+  }
+}
+URL https://media-hls.doppiocdn.com/hls/Juliette_Sunshine/master/Juliette_Sunshine_auto.m3u8 failed test
+Memory usage: 288MB (RSS), Heap: 19MB / 23MB
+Starting ffmpeg with args: -i https://media-hls.doppiocdn.com/b-hls-08/121249934/121249934_720p60.m3u8?playlistType=lowLatency -t 600 -c:v libx264 -c:a aac -b:v 2500k -b:a 128k -vf scale=1280:720,setsar=1:1 -preset fast -y -err_detect ignore_err -reconnect 1 -reconnect_at_eof 1 -reconnect_streamed 1 -reconnect_delay_max 5 /tmp/Aoki_sweet_6222095069_1741762816556.mp4
+📤 Sending video file (182.54MB) to Telegram...
+Error sending video: TelegramError: 413: Request Entity Too Large
+    at Telegram.callApi (/home/drcatto/stripchat-monitor-bot/node_modules/telegraf/lib/core/network/client.js:315:19)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async handleRecordedFile (/home/drcatto/stripchat-monitor-bot/services/recordService.js:342:7)
+    at async Object.executeRecord (/home/drcatto/stripchat-monitor-bot/services/recordService.js:484:21)
+    at async handler (/home/drcatto/stripchat-monitor-bot/handlers/commands/recordCommand.js:23:3) {
+  response: {
+    ok: false,
+    error_code: 413,
+    description: 'Request Entity Too Large'
+  },
+  on: {
+    method: 'sendVideo',
+    payload: {
+      chat_id: 6222095069,
+      video: [Object],
+      message_thread_id: undefined,
+      timeout: 60000
+    }
+  }
+}
+Memory usage: 279MB (RSS), Heap: 18MB / 21MB
+Starting ffmpeg with args: -i https://edge-hls.doppiocdn.com/hls/121249934/master/121249934_720p60.m3u8?playlistType=lowLatency -t 600 -c:v libx264 -c:a aac -b:v 2500k -b:a 128k -vf scale=1280:720,setsar=1:1 -preset fast -y -err_detect ignore_err -reconnect 1 -reconnect_at_eof 1 -reconnect_streamed 1 -reconnect_delay_max 5 /tmp/Aoki_sweet_6222095069_1741763453511.mp4
+📤 Sending video file (186.99MB) to Telegram...
+Error sending video: TelegramError: 413: Request Entity Too Large
+    at Telegram.callApi (/home/drcatto/stripchat-monitor-bot/node_modules/telegraf/lib/core/network/client.js:315:19)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async handleRecordedFile (/home/drcatto/stripchat-monitor-bot/services/recordService.js:342:7)
+    at async Object.executeRecord (/home/drcatto/stripchat-monitor-bot/services/recordService.js:484:21)
+    at async handler (/home/drcatto/stripchat-monitor-bot/handlers/commands/recordCommand.js:23:3) {
+  response: {
+    ok: false,
+    error_code: 413,
+    description: 'Request Entity Too Large'
+  },
+  on: {
+    method: 'sendVideo',
+    payload: {
+      chat_id: 6222095069,
+      video: [Object],
+      message_thread_id: undefined,
+      timeout: 60000
+    }
+  }
+}
+Memory usage: 292MB (RSS), Heap: 18MB / 21MB
+Starting ffmpeg with args: -i https://media-hls.doppiocdn.com/b-hls-08/121249934/121249934_720p.m3u8?playlistType=lowLatency -t 600 -c:v libx264 -c:a aac -b:v 2500k -b:a 128k -vf scale=1280:720,setsar=1:1 -preset fast -y -err_detect ignore_err -reconnect 1 -reconnect_at_eof 1 -reconnect_streamed 1 -reconnect_delay_max 5 /tmp/Aoki_sweet_6222095069_1741764129636.mp4
+📤 Sending video file (191.20MB) to Telegram...
+Error sending video: TelegramError: 413: Request Entity Too Large
+    at Telegram.callApi (/home/drcatto/stripchat-monitor-bot/node_modules/telegraf/lib/core/network/client.js:315:19)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async handleRecordedFile (/home/drcatto/stripchat-monitor-bot/services/recordService.js:342:7)
+    at async Object.executeRecord (/home/drcatto/stripchat-monitor-bot/services/recordService.js:484:21)
+    at async handler (/home/drcatto/stripchat-monitor-bot/handlers/commands/recordCommand.js:23:3) {
+  response: {
+    ok: false,
+    error_code: 413,
+    description: 'Request Entity Too Large'
+  },
+  on: {
+    method: 'sendVideo',
+    payload: {
+      chat_id: 6222095069,
+      video: [Object],
+      message_thread_id: undefined,
+      timeout: 60000
+    }
+  }
+}
+Memory usage: 299MB (RSS), Heap: 18MB / 21MB
+Starting ffmpeg with args: -i https://edge-hls.doppiocdn.com/hls/121249934/master/121249934_720p.m3u8?playlistType=lowLatency -t 600 -c:v libx264 -c:a aac -b:v 2500k -b:a 128k -vf scale=1280:720,setsar=1:1 -preset fast -y -err_detect ignore_err -reconnect 1 -reconnect_at_eof 1 -reconnect_streamed 1 -reconnect_delay_max 5 /tmp/Aoki_sweet_6222095069_1741764741928.mp4
+📤 Sending video file (189.44MB) to Telegram...
+Error sending video: TelegramError: 413: Request Entity Too Large
+    at Telegram.callApi (/home/drcatto/stripchat-monitor-bot/node_modules/telegraf/lib/core/network/client.js:315:19)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async handleRecordedFile (/home/drcatto/stripchat-monitor-bot/services/recordService.js:342:7)
+    at async Object.executeRecord (/home/drcatto/stripchat-monitor-bot/services/recordService.js:484:21)
+    at async handler (/home/drcatto/stripchat-monitor-bot/handlers/commands/recordCommand.js:23:3) {
+  response: {
+    ok: false,
+    error_code: 413,
+    description: 'Request Entity Too Large'
+  },
+  on: {
+    method: 'sendVideo',
+    payload: {
+      chat_id: 6222095069,
+      video: [Object],
+      message_thread_id: undefined,
+      timeout: 60000
+    }
+  }
+}
+Memory usage: 299MB (RSS), Heap: 18MB / 22MB
+URL https://media-hls.doppiocdn.com/b-hls-08/121249934/121249934_480p30.m3u8?playlistType=lowLatency failed test
+URL https://edge-hls.doppiocdn.com/hls/121249934/master/121249934_480p30.m3u8?playlistType=lowLatency failed test
+URL https://media-hls.doppiocdn.com/b-hls-08/121249934/121249934_360p30.m3u8?playlistType=lowLatency failed test
+URL https://edge-hls.doppiocdn.com/hls/121249934/master/121249934_360p30.m3u8?playlistType=lowLatency failed test
+URL https://media-hls.doppiocdn.com/b-hls-08/121249934/121249934_240p30.m3u8?playlistType=lowLatency failed test
+URL https://edge-hls.doppiocdn.com/hls/121249934/master/121249934_240p30.m3u8?playlistType=lowLatency failed test
+Starting ffmpeg with args: -i https://media-hls.doppiocdn.com/b-hls-08/121249934/121249934_160p.m3u8?playlistType=lowLatency -t 600 -c:v libx264 -c:a aac -b:v 2500k -b:a 128k -vf scale=1280:720,setsar=1:1 -preset fast -y -err_detect ignore_err -reconnect 1 -reconnect_at_eof 1 -reconnect_streamed 1 -reconnect_delay_max 5 /tmp/Aoki_sweet_6222095069_1741765431533.mp4
+📤 Sending video file (187.47MB) to Telegram...
+Error sending video: TelegramError: 413: Request Entity Too Large
+    at Telegram.callApi (/home/drcatto/stripchat-monitor-bot/node_modules/telegraf/lib/core/network/client.js:315:19)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async handleRecordedFile (/home/drcatto/stripchat-monitor-bot/services/recordService.js:342:7)
+    at async Object.executeRecord (/home/drcatto/stripchat-monitor-bot/services/recordService.js:484:21)
+    at async handler (/home/drcatto/stripchat-monitor-bot/handlers/commands/recordCommand.js:23:3) {
+  response: {
+    ok: false,
+    error_code: 413,
+    description: 'Request Entity Too Large'
+  },
+  on: {
+    method: 'sendVideo',
+    payload: {
+      chat_id: 6222095069,
+      video: [Object],
+      message_thread_id: undefined,
+      timeout: 60000
+    }
+  }
+}
+Memory usage: 291MB (RSS), Heap: 18MB / 21MB
+Starting ffmpeg with args: -i https://edge-hls.doppiocdn.com/hls/121249934/master/121249934_160p.m3u8?playlistType=lowLatency -t 600 -c:v libx264 -c:a aac -b:v 2500k -b:a 128k -vf scale=1280:720,setsar=1:1 -preset fast -y -err_detect ignore_err -reconnect 1 -reconnect_at_eof 1 -reconnect_streamed 1 -reconnect_delay_max 5 /tmp/Aoki_sweet_6222095069_1741766093349.mp4
+📤 Sending video file (22.78MB) to Telegram...
+✅ Successfully sent video file to Telegram
+Memory usage: 306MB (RSS), Heap: 17MB / 21MB
+
+> stripchat-monitor-bot@1.0.0 start
+> node index.js
+
+SSL certificates not found, starting with HTTP...
+🚀 Starting Stripchat Monitor Bot...
+Server error: Error: listen EADDRINUSE: address already in use :::3000
+    at Server.setupListenHandle [as _listen2] (node:net:1937:16)
+    at listenInCluster (node:net:1994:12)
+    at Server.listen (node:net:2099:7)
+    at Object.startServer (/home/drcatto/stripchat-monitor-bot/fileServer.js:357:10)
+    at Object.<anonymous> (/home/drcatto/stripchat-monitor-bot/index.js:12:12)
+    at Module._compile (node:internal/modules/cjs/loader:1554:14)
+    at Object..js (node:internal/modules/cjs/loader:1706:10)
+    at Module.load (node:internal/modules/cjs/loader:1289:32)
+    at Function._load (node:internal/modules/cjs/loader:1108:12)
+    at TracingChannel.traceSync (node:diagnostics_channel:322:14) {
+  code: 'EADDRINUSE',
+  errno: -98,
+  syscall: 'listen',
+  address: '::',
+  port: 3000
+}
+Port 3000 is already in use, trying port 3001...
+File server running on port 3000
+🌐 Server URL: http://localhost:3000
+File server running on port 3001
+🌐 Server URL: http://localhost:3001
+📁 Data directory is ready
+📚 Loading data models...
+📄 Read 1354 bytes from ./data/monitoredUsers.json
+🔍 Successfully parsed JSON data
+✅ Loaded 6 monitored users
+Saved 6 monitored users to disk
+✅ Loaded 6 monitored users
+📂 Checking for premium users file at ./data/premiumUsers.json
+📄 Read 352 bytes from premium users file
+🔍 Successfully parsed premium users JSON data
+✅ User 6222095069 has premium until 2025-04-11T03:14:02.857Z
+✅ User 7266244734 has premium until 2025-04-11T06:15:25.322Z
+✅ Loaded 2 premium users
+Saving 2 premium users to ./data/premiumUsers.json
+Premium users data saved successfully
+✅ Loaded 2 premium users
+📂 Checking for auto record config at ./data/autoRecordConfig.json
+📄 Read 190 bytes from auto record config file
+🔍 Successfully parsed auto record config JSON data
+✅ Loaded auto record config for 1 users
+📝 Attempting to write temp config file: ./data/autoRecordConfig.json.tmp
+📂 Renaming ./data/autoRecordConfig.json.tmp → ./data/autoRecordConfig.json
+💾 Successfully saved auto record config to ./data/autoRecordConfig.json
+✅ Loaded auto-record config for 1 users
+✅ All data models loaded successfully
+Registered command: add
+Registered command: autorecord
+Registered command: list
+Registered command: premium
+Registered command: record
+Registered command: remove
+Registered command: start
+All commands registered
+Message handler registered
+Checking status for Shiny_lily...
+Created new browser instance #1. Active browsers: 1/1
+Released browser. Active browsers: 0/1
+Using existing browser instance #1. Active browsers: 1/1
+Released browser. Active browsers: 0/1
+Starting ffmpeg with args: -i https://media-hls.doppiocdn.com/b-hls-08/50228771/50228771_720p.m3u8?playlistType=lowLatency -t 600 -c:v libx264 -c:a aac -b:v 2500k -b:a 128k -vf scale=1280:720,setsar=1:1 -preset fast -y -err_detect ignore_err -reconnect 1 -reconnect_at_eof 1 -reconnect_streamed 1 -reconnect_delay_max 5 /tmp/Shiny_lily_6222095069_1741790743818.mp4
+Closed 1 inactive browsers
+📤 Sending video file (170.13MB) to Telegram...
+✅ Successfully sent video file to Telegram
+Memory usage: 100MB (RSS), Heap: 17MB / 23MB
+❌ Failed to start bot: TelegramError: 409: Conflict: terminated by other getUpdates request; make sure that only one bot instance is running
+    at Telegram.callApi (/home/drcatto/stripchat-monitor-bot/node_modules/telegraf/lib/core/network/client.js:315:19)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async [Symbol.asyncIterator] (/home/drcatto/stripchat-monitor-bot/node_modules/telegraf/lib/core/network/polling.js:30:33)
+    at async Polling.loop (/home/drcatto/stripchat-monitor-bot/node_modules/telegraf/lib/core/network/polling.js:73:30)
+    at async Telegraf.launch (/home/drcatto/stripchat-monitor-bot/node_modules/telegraf/lib/telegraf.js:194:13)
+    at async startBot (/home/drcatto/stripchat-monitor-bot/index.js:92:5) {
+  response: {
+    ok: false,
+    error_code: 409,
+    description: 'Conflict: terminated by other getUpdates request; make sure that only one bot instance is running'
+  },
+  on: {
+    method: 'getUpdates',
+    payload: { timeout: 50, offset: 210410750, allowed_updates: [] }
+  }
+}

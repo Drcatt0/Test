@@ -10,6 +10,7 @@ const path = require('path');
 const config = require('./config/config');
 const fileServer = require('./fileServer');
 fileServer.startServer();
+
 // Initialize the bot with local API server
 const bot = new Telegraf(config.BOT_TOKEN, {
   telegram: {
@@ -68,9 +69,6 @@ async function startBot() {
     
     console.log('✅ All data models loaded successfully');
 
-    // Initialize the bot
-    const bot = new Telegraf(config.BOT_TOKEN);
-    
     // Register command handlers
     commandHandler.registerCommands(bot);
     
@@ -106,31 +104,47 @@ async function startBot() {
         { command: 'start', description: 'Show welcome message and command list' }
       ]);
       
-      // Start monitoring and cleaning routines
+      // Update monitoring intervals
+      config.MONITOR_INTERVAL = 5 * 60 * 1000; // Every 5 minutes
+      config.GOAL_CHECK_INTERVAL = 20 * 1000; // Every 20 seconds
+      
+      // Start monitoring service
+      console.log("🚀 Starting monitoring service...");
       monitorService.startMonitoring(bot);
+      
+      // Start cleanup routines
       memoryService.startCleanupRoutines();
       
+      // Restart monitoring every 3 hours to ensure it's running properly
+      const monitorRestartInterval = setInterval(() => {
+        console.log("🔄 Scheduled monitoring service restart for health maintenance");
+        monitorService.restartMonitoring(bot);
+      }, 3 * 60 * 60 * 1000); // Every 3 hours
+      
       console.log('✅ Bot startup complete');
+      
+      // Graceful shutdown handlers
+      process.once('SIGINT', () => {
+        console.log('SIGINT received. Shutting down gracefully...');
+        clearInterval(monitorRestartInterval);
+        memoryService.stopCleanupRoutines();
+        monitorService.stopMonitoring();
+        browserService.closeBrowser();
+        bot.stop('SIGINT');
+      });
+      
+      process.once('SIGTERM', () => {
+        console.log('SIGTERM received. Shutting down gracefully...');
+        clearInterval(monitorRestartInterval);
+        memoryService.stopCleanupRoutines();
+        monitorService.stopMonitoring();
+        browserService.closeBrowser();
+        bot.stop('SIGTERM');
+      });
+      
     } catch (err) {
       console.error('Error during startup:', err);
     }
-    
-    // Graceful shutdown handlers
-    process.once('SIGINT', () => {
-      console.log('SIGINT received. Shutting down gracefully...');
-      memoryService.stopCleanupRoutines();
-      monitorService.stopMonitoring();
-      browserService.closeBrowser();
-      bot.stop('SIGINT');
-    });
-    
-    process.once('SIGTERM', () => {
-      console.log('SIGTERM received. Shutting down gracefully...');
-      memoryService.stopCleanupRoutines();
-      monitorService.stopMonitoring();
-      browserService.closeBrowser();
-      bot.stop('SIGTERM');
-    });
     
   } catch (err) {
     console.error('❌ Failed to start bot:', err);
@@ -142,5 +156,4 @@ async function startBot() {
 startBot().catch(err => {
   console.error('Fatal error starting bot:', err);
   process.exit(1);
-  
 });
