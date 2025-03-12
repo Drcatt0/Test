@@ -24,27 +24,36 @@ async function loadAutoRecordConfig() {
   return autoRecordConfig;
 }
 
-/**
- * Save auto record config to JSON file
- */
 async function saveAutoRecordConfig() {
   try {
     // Ensure directory exists
     const dir = path.dirname(config.AUTO_RECORD_CONFIG_PATH);
     await fs.ensureDir(dir);
-    
-    // Write to temp file then rename for atomic operation
+
     const tempFile = `${config.AUTO_RECORD_CONFIG_PATH}.tmp`;
+
+    console.log(`📝 Attempting to write temp config file: ${tempFile}`);
+
+    // Write to temp file
     await fs.writeFile(tempFile, JSON.stringify(autoRecordConfig, null, 2));
+
+    // Check if the temp file actually exists before renaming
+    if (!fs.existsSync(tempFile)) {
+      throw new Error(`🚨 Temp file missing! ${tempFile} was not created.`);
+    }
+
+    console.log(`📂 Renaming ${tempFile} → ${config.AUTO_RECORD_CONFIG_PATH}`);
+
     await fs.rename(tempFile, config.AUTO_RECORD_CONFIG_PATH);
-    
-    console.log(`Saved auto record config for ${Object.keys(autoRecordConfig).length} users`);
+
+    console.log(`💾 Successfully saved auto record config to ${config.AUTO_RECORD_CONFIG_PATH}`);
     return true;
   } catch (error) {
-    console.error("Error saving autoRecordConfig.json:", error);
+    console.error("❌ Error saving autoRecordConfig.json:", error);
     return false;
   }
 }
+
 
 /**
  * Get auto record config for a user
