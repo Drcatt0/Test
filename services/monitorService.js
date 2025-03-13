@@ -52,7 +52,8 @@ async function checkUsernameExists(username) {
 }
 
 /**
- * Check the live status of a Stripchat username - Simplified from old bot
+ * Check the live status of a Stripchat username - FIXED VERSION
+ * Uses the profile page and improved detection
  * @param {string} username - Stripchat username to check
  * @returns {Promise<Object>} Status information including isLive and other data
  */
@@ -102,39 +103,96 @@ async function checkStripchatStatus(username) {
     // Set timeouts
     await page.setDefaultNavigationTimeout(30000);
     
-    // Add cache busting
+    // Specifically go to the profile page as requested
     const cacheBuster = Date.now();
-    await page.goto(`https://stripchat.com/${username}?_=${cacheBuster}`, {
+    console.log(`Opening profile URL: https://stripchat.com/${username}/profile?_=${cacheBuster}`);
+    await page.goto(`https://stripchat.com/${username}/profile?_=${cacheBuster}`, {
       waitUntil: 'networkidle2',
       timeout: 30000
     });
 
-    // Wait for page to settle
-    await new Promise(resolve => setTimeout(resolve, 2000));
+    // Wait for profile elements to load
+    await page.waitForSelector('.profile-cover_avatar-wrapper, [class*="profile-cover_avatar-wrapper"], .avatar, [class*="avatar"]', { 
+      timeout: 10000 
+    }).catch(() => {
+      console.log(`Timeout waiting for profile elements for ${username}, proceeding anyway`);
+    });
 
-    // CHECK LIVE STATUS - SIMPLER IMPLEMENTATION FROM OLD BOT
-    const status = await page.evaluate(() => {
-      // Simple checks for live indicators
-      const liveBadge = document.querySelector(".live-badge");
-      const liveStream = document.querySelector("video");
-      const liveStatusText = document.querySelector(".status")?.innerText?.includes("Live");
-      const thumb = document.querySelector('meta[property="og:image"]')?.content;
+    // Log page content size for debugging
+    const pageContent = await page.content();
+    console.log(`Profile page loaded for ${username} with ${pageContent.length} characters`);
 
-      // Check for goal information while we're here
-      let goal = {
-        active: false,
-        completed: false,
-        progress: 0,
-        text: '',
-        currentAmount: 0
+    // Check live status from the profile page
+    const profileStatus = await page.evaluate(() => {
+      // Look specifically for the live badge in the profile avatar wrapper as shown in screenshots
+      const liveBadge = document.querySelector('.live-badge, [class*="live-badge"]');
+      console.log('Live badge found:', liveBadge !== null);
+      
+      const isLive = !!liveBadge;
+      
+      // Get thumbnail if available
+      const thumbnail = document.querySelector('meta[property="og:image"]')?.content ||
+                        document.querySelector('.profile-cover_avatar-wrapper img, [class*="profile-cover_avatar-wrapper"] img, .avatar img, [class*="avatar"] img')?.src;
+      
+      // Get next broadcast if not live
+      let nextBroadcast = null;
+      if (!isLive) {
+        const scheduleElements = document.querySelectorAll('.schedule-next-informer__weekday, .schedule-next-informer__link, [class*="schedule-next"]');
+        if (scheduleElements.length > 0) {
+          let broadcastText = '';
+          scheduleElements.forEach(el => {
+            broadcastText += el.textContent.trim() + ' ';
+          });
+          nextBroadcast = broadcastText.trim();
+        }
+      }
+      
+      return { 
+        isLive,
+        thumbnail,
+        nextBroadcast
       };
-
-      // Try to find goal information
-      try {
+    });
+    
+    console.log(`Profile check result for ${username}: Live=${profileStatus.isLive}`);
+    
+    // Update result with profile data
+    result.isLive = profileStatus.isLive;
+    result.thumbnail = profileStatus.thumbnail;
+    result.nextBroadcast = profileStatus.nextBroadcast;
+    
+    // If live, go to main page to check for goal information
+    if (profileStatus.isLive) {
+      console.log(`${username} is LIVE - checking goal information`);
+      await page.goto(`https://stripchat.com/${username}?_=${cacheBuster}`, {
+        waitUntil: 'networkidle2',
+        timeout: 30000
+      });
+      
+      // Wait for content
+      await page.waitForFunction(() => {
+        const goalElements = document.querySelectorAll('[role="progressbar"], [class*="progress"], [class*="goal"]');
+        console.log('Goal elements found:', goalElements.length);
+        return goalElements.length > 0 || document.querySelector('video') !== null;
+      }, { timeout: 10000 }).catch(() => {
+        console.log(`Timeout waiting for main page elements for ${username}`);
+      });
+      
+      // Extract goal information
+      const goalInfo = await page.evaluate(() => {
+        const goal = {
+          active: false,
+          completed: false,
+          progress: 0,
+          text: '',
+          currentAmount: 0
+        };
+        
         // Look for goal progress elements
-        const progressElements = document.querySelectorAll("[role='progressbar'], [class*='progress'], [class*='goal']");
+        const progressElements = document.querySelectorAll('[role="progressbar"], [class*="progress"], [class*="goal"]');
         if (progressElements.length > 0) {
           goal.active = true;
+          console.log('Found active goal');
           
           // Try to extract progress percentage
           for (const el of progressElements) {
@@ -142,6 +200,7 @@ async function checkStripchatStatus(username) {
             const style = window.getComputedStyle(el);
             if (style.width && style.width.includes('%')) {
               goal.progress = parseFloat(style.width);
+              console.log('Goal progress from style:', goal.progress);
               if (goal.progress >= 95) goal.completed = true;
               break;
             }
@@ -150,16 +209,18 @@ async function checkStripchatStatus(username) {
             const valueNow = el.getAttribute('aria-valuenow');
             if (valueNow) {
               goal.progress = parseFloat(valueNow);
+              console.log('Goal progress from aria-valuenow:', goal.progress);
               if (goal.progress >= 95) goal.completed = true;
               break;
             }
           }
           
           // Look for goal text nearby
-          const goalTextElements = document.querySelectorAll("[class*='goal'] div, [class*='Goal'] div");
+          const goalTextElements = document.querySelectorAll('[class*="goal"] div, [class*="Goal"] div');
           for (const el of goalTextElements) {
             if (el.innerText && el.innerText.length > 3) {
               goal.text = el.innerText.trim();
+              console.log('Found goal text:', goal.text);
               break;
             }
           }
@@ -171,32 +232,29 @@ async function checkStripchatStatus(username) {
               const match = el.innerText.match(/(\d+)\s*tk/);
               if (match && match[1]) {
                 goal.currentAmount = parseInt(match[1], 10);
+                console.log('Found token amount:', goal.currentAmount);
                 break;
               }
             }
           }
         }
-      } catch (e) {
-        console.error("Error extracting goal info:", e);
-      }
-
-      return {
-        isLive: liveBadge !== null || liveStream !== null || liveStatusText === true,
-        thumbnail: thumb || null,
-        goal: goal
-      };
-    });
+        
+        return goal;
+      });
+      
+      console.log(`Goal information for ${username}:`, goalInfo);
+      
+      // Update result with goal data
+      result.goal = goalInfo;
+    } else {
+      console.log(`${username} is OFFLINE`);
+    }
 
     // Close the page and release the browser
     await page.close();
     browserService.releaseBrowser(browser);
     
-    // Return the results from page evaluation
-    return {
-      isLive: status.isLive,
-      thumbnail: status.thumbnail,
-      goal: status.goal
-    };
+    return result;
     
   } catch (error) {
     console.error(`❌ Error checking status for ${username}:`, error);

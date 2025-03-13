@@ -160,10 +160,25 @@ async function startBot() {
       }, 4 * 60 * 60 * 1000); // Every 4 hours
       
       console.log('✅ Bot startup complete');
-      
-      // Graceful shutdown handlers
-      process.once('SIGINT', () => {
-        console.log('SIGINT received. Shutting down gracefully...');
+     // Find this line in your index.js
+console.log('✅ Bot startup complete');
+
+// Add these lines immediately after it
+// Store bot instance globally so it can be accessed by the fix script
+global.botInstance = bot;
+
+// Add delay to make sure everything is loaded first
+setTimeout(() => {
+  // Apply emergency monitoring fix
+  const fix = require('./fixMonitoring');
+  fix.fixMonitoring();
+}, 15000); // Wait 15 seconds after startup
+
+// Your existing code continues below - DON'T REMOVE THIS PART
+// Graceful shutdown handlers
+process.once('SIGINT', () => {
+  console.log('SIGINT received. Shutting down gracefully...');
+  // rest of your existing code
         clearInterval(servicesRestartInterval);
         memoryService.stopCleanupRoutines();
         notifierService.stopNotifier();

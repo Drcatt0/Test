@@ -444,124 +444,139 @@ async function triggerGoalRecording(username, goal, chatId, botInstance, eligibl
   }
 }
 
-/**
- * Get the stream status for a username
- */
 async function getStreamStatus(username) {
-  let browser = null;
-  let page = null;
+    let browser = null;
+    let page = null;
+    
+    try {
+      console.log(`🎯 Goal monitor checking ${username}...`);
+      
+      // Get browser instance
+      browser = await browserService.getBrowser();
+      if (!browser) {
+        throw new Error(`Failed to get browser instance for ${username}`);
+      }
   
-  try {
-    // Get browser instance
-    browser = await browserService.getBrowser();
-    if (!browser) {
-      throw new Error(`Failed to get browser instance for ${username}`);
-    }
-
-    // Create a new page
-    page = await browser.newPage();
-    
-    // Set random user agent
-    await page.setUserAgent(browserService.getRandomUserAgent());
-    
-    // Block unnecessary resources
-    await page.setRequestInterception(true);
-    page.on('request', (req) => {
-      const resourceType = req.resourceType();
-      if (['font', 'media', 'websocket'].includes(resourceType) || 
-          (resourceType === 'image' && !req.url().includes('thumb'))) {
-        req.abort();
-      } else {
-        req.continue();
-      }
-    });
-
-    // Set timeouts
-    await page.setDefaultNavigationTimeout(30000);
-    
-    // Navigate to the user's page with cache buster
-    const cacheBuster = Date.now();
-    await page.goto(`https://stripchat.com/${username}?_=${cacheBuster}`, {
-      waitUntil: 'domcontentloaded',  // Faster load time
-      timeout: 25000
-    });
-
-    // Wait for essential content
-    await page.waitForFunction(
-      () => {
-        // Check for live elements
-        const liveBadge = document.querySelector('.live-badge, [class*="live-badge"]');
-        const video = document.querySelector('video');
-        // Check for goal elements
-        const goalElem = document.querySelector('[class*="epic-goal-progress"], [class*="goal"], [role="progressbar"]');
-        
-        return (liveBadge !== null) || (video !== null) || (goalElem !== null);
-      },
-      { timeout: 10000 }
-    ).catch(() => {
-      console.log(`Timeout waiting for content on ${username}'s page`);
-    });
-
-    // Extract status information
-    const status = await page.evaluate(() => {
-      const result = {
-        isLive: false,
-        goal: {
-          active: false,
-          progress: 0,
-          text: '',
-          completed: false,
-          tokenAmount: 0
-        },
-        nextBroadcast: null
-      };
+      // Create a new page
+      page = await browser.newPage();
       
-      // Multiple robust checks for live status
-      const videoElem = document.querySelector('video');
-      const videoPlaying = videoElem && (videoElem.readyState > 0);
+      // Set random user agent
+      await page.setUserAgent(browserService.getRandomUserAgent());
       
-      const liveBadge = document.querySelector('.live-badge, [class*="live-badge"]');
-      const statusText = document.querySelector('[class*="status"]')?.innerText || '';
-      const isStatusLive = statusText.includes('LIVE') || statusText.includes('Live');
-      
-      const liveBroadcast = document.querySelector('[class*="live"], [class*="broadcast"], [class*="streaming"]');
-      
-      // Very reliable live detection combining multiple methods
-      result.isLive = videoPlaying || 
-                     (liveBadge !== null) || 
-                     isStatusLive || 
-                     (liveBroadcast !== null);
-      
-      // If not live, try to get next broadcast time
-      if (!result.isLive) {
-        const scheduleElements = document.querySelectorAll('.schedule-next-informer__weekday, .schedule-next-informer__link, [class*="schedule-next"], [class*="next-show"]');
-        if (scheduleElements.length > 0) {
-          let nextBroadcast = '';
-          scheduleElements.forEach(el => {
-            const text = el.textContent.trim();
-            if (text) nextBroadcast += text + ' ';
-          });
-          
-          // Try to find the time as well
-          const timeElements = document.querySelectorAll(
-            '.schedule-next-informer, [class*="schedule-next"], [class*="broadcast-time"]'
-          );
-          
-          timeElements.forEach(el => {
-            const text = el.textContent.trim();
-            if (text && (text.includes('AM') || text.includes('PM') || text.includes(':'))) {
-              nextBroadcast += text + ' ';
-            }
-          });
-          
-          result.nextBroadcast = nextBroadcast.trim().replace(/\s+/g, ' ');
+      // Block unnecessary resources
+      await page.setRequestInterception(true);
+      page.on('request', (req) => {
+        const resourceType = req.resourceType();
+        if (['font', 'media', 'websocket'].includes(resourceType) || 
+            (resourceType === 'image' && !req.url().includes('thumb'))) {
+          req.abort();
+        } else {
+          req.continue();
         }
-      }
+      });
+  
+      // Set timeouts
+      await page.setDefaultNavigationTimeout(30000);
       
-      // If live, extract goal information
-      if (result.isLive) {
+      // First check the profile page URL for accurate live status
+      const cacheBuster = Date.now();
+      console.log(`Opening profile URL: https://stripchat.com/${username}/profile?_=${cacheBuster}`);
+      await page.goto(`https://stripchat.com/${username}/profile?_=${cacheBuster}`, {
+        waitUntil: 'domcontentloaded',
+        timeout: 25000
+      });
+  
+      // Wait for profile elements
+      await page.waitForSelector('.profile-cover_avatar-wrapper, [class*="profile-cover_avatar-wrapper"], .avatar, [class*="avatar"]', { 
+        timeout: 10000 
+      }).catch(() => {
+        console.log(`Timeout waiting for profile elements for ${username}`);
+      });
+  
+      // Log page details
+      const pageContent = await page.content();
+      console.log(`Profile page loaded for ${username} with ${pageContent.length} characters`);
+  
+      // Extract live status from profile page
+      const profileStatus = await page.evaluate(() => {
+        // Check specifically for live badge as shown in screenshots
+        const liveBadge = document.querySelector('.live-badge, [class*="live-badge"]');
+        console.log('Live badge found:', liveBadge !== null);
+        
+        const isLive = !!liveBadge;
+        
+        // Get next broadcast time if not live
+        let nextBroadcast = null;
+        if (!isLive) {
+          const scheduleElements = document.querySelectorAll('.schedule-next-informer__weekday, .schedule-next-informer__link, [class*="schedule-next"]');
+          if (scheduleElements.length > 0) {
+            let broadcastText = '';
+            scheduleElements.forEach(el => {
+              broadcastText += el.textContent.trim() + ' ';
+            });
+            
+            // Also look for time
+            const timeElements = document.querySelectorAll('.schedule-next-informer, [class*="schedule-next"]');
+            timeElements.forEach(el => {
+              if (el.textContent.includes('AM') || el.textContent.includes('PM') || el.textContent.includes(':')) {
+                broadcastText += el.textContent.trim() + ' ';
+              }
+            });
+            
+            nextBroadcast = broadcastText.trim();
+          }
+        }
+        
+        return { isLive, nextBroadcast };
+      });
+  
+      console.log(`Profile check result for ${username}: Live=${profileStatus.isLive}`);
+  
+      // If not live, return early with offline status
+      if (!profileStatus.isLive) {
+        console.log(`${username} is OFFLINE - skipping goal check`);
+        await page.close();
+        browserService.releaseBrowser(browser);
+        
+        return { 
+          isLive: false, 
+          goal: { active: false, progress: 0, text: '', completed: false, tokenAmount: 0 },
+          nextBroadcast: profileStatus.nextBroadcast
+        };
+      }
+  
+      // If live, go to main page to check for goal information
+      console.log(`${username} is LIVE - checking goal information`);
+      await page.goto(`https://stripchat.com/${username}?_=${cacheBuster}`, {
+        waitUntil: 'domcontentloaded',
+        timeout: 25000
+      });
+  
+      // Wait for content
+      await page.waitForFunction(() => {
+        // Check for goal elements
+        const goalElems = document.querySelectorAll('[class*="epic-goal-progress"], [class*="goal"], [role="progressbar"]');
+        console.log('Goal elements found:', goalElems.length);
+        return goalElems.length > 0 || document.querySelector('video') !== null;
+      }, { timeout: 10000 }).catch(() => {
+        console.log(`Timeout waiting for main page content for ${username}`);
+      });
+  
+      // Extract goal information
+      const goalInfo = await page.evaluate(() => {
+        const result = {
+          isLive: true, // We know they're live from the profile page
+          goal: {
+            active: false,
+            progress: 0,
+            text: '',
+            completed: false,
+            tokenAmount: 0
+          }
+        };
+        
+        // Look for goal progress elements
         try {
-          // Look for goal progress elements (multi-selector for different page versions)
           const goalProgressElements = document.querySelectorAll(
             '[class*="epic-goal-progress"], ' + 
             '[class*="goal-progress"], ' + 
@@ -572,6 +587,7 @@ async function getStreamStatus(username) {
           
           if (goalProgressElements.length > 0) {
             result.goal.active = true;
+            console.log('Found active goal');
             
             // Try multiple methods to get progress percentage
             for (const el of goalProgressElements) {
@@ -579,6 +595,7 @@ async function getStreamStatus(username) {
               const style = window.getComputedStyle(el);
               if (style.width && style.width.includes('%')) {
                 result.goal.progress = parseFloat(style.width);
+                console.log('Goal progress from style:', result.goal.progress);
                 break;
               }
               
@@ -586,6 +603,7 @@ async function getStreamStatus(username) {
               const valueNow = el.getAttribute('aria-valuenow');
               if (valueNow) {
                 result.goal.progress = parseFloat(valueNow);
+                console.log('Goal progress from aria-valuenow:', result.goal.progress);
                 break;
               }
               
@@ -593,6 +611,7 @@ async function getStreamStatus(username) {
               const dataValue = el.getAttribute('data-progress') || el.getAttribute('data-value');
               if (dataValue) {
                 result.goal.progress = parseFloat(dataValue);
+                console.log('Goal progress from data attribute:', result.goal.progress);
                 break;
               }
               
@@ -601,48 +620,12 @@ async function getStreamStatus(username) {
               const percentMatch = progressText.match(/(\d+(\.\d+)?)%/);
               if (percentMatch && percentMatch[1]) {
                 result.goal.progress = parseFloat(percentMatch[1]);
+                console.log('Goal progress from text:', result.goal.progress);
                 break;
               }
             }
             
-            // Alternative progress detection from status element
-            if (!result.goal.progress) {
-              const statusElements = document.querySelectorAll(
-                '[class*="epic-goal-progress_status"], ' +
-                '[class*="progress_status"], ' +
-                '[class*="percentage"], ' +
-                '[class*="progress-value"]'
-              );
-              
-              for (const el of statusElements) {
-                const text = el.textContent || '';
-                const percentMatch = text.match(/(\d+(\.\d+)?)%/);
-                if (percentMatch && percentMatch[1]) {
-                  result.goal.progress = parseFloat(percentMatch[1]);
-                  break;
-                }
-              }
-            }
-            
-            // Get token amount (try multiple selectors)
-            const tokenElements = document.querySelectorAll(
-              '[class*="epic-goal-progress_tokens"], ' +
-              '[class*="progress_tokens"], ' +
-              '[class*="tokens"], ' +
-              '[class*="goal-amount"]'
-            );
-            
-            for (const el of tokenElements) {
-              const text = el.textContent || '';
-              const tokenMatch = text.match(/(\d+)\s*tk/);
-              if (tokenMatch && tokenMatch[1]) {
-                result.goal.tokenAmount = parseInt(tokenMatch[1], 10);
-                break;
-              }
-            }
-            
-            // Get goal text (try multiple methods)
-            // Method 1: From dedicated goal info elements
+            // Get goal text
             const goalInfoElements = document.querySelectorAll(
               '[class*="epic-goal-progress_information"], ' +
               '[class*="progress_information"], ' +
@@ -655,55 +638,84 @@ async function getStreamStatus(username) {
               const text = el.innerText.trim();
               if (text && text.length > 3) {
                 result.goal.text = text;
+                console.log('Found goal text:', text);
                 break;
               }
             }
             
-            // Method 2: Look for text with "Goal:" prefix
+            // If no specific goal text found, look for text with "Goal:" prefix
             if (!result.goal.text) {
               const allElements = document.querySelectorAll('*');
               for (const el of allElements) {
                 const text = el.innerText || '';
                 if (text.includes('Goal:') || text.includes('goal:')) {
                   result.goal.text = text.trim();
+                  console.log('Found goal text from general content:', text);
                   break;
                 }
               }
             }
             
+            // Get token amount
+            const tokenElements = document.querySelectorAll(
+              '[class*="epic-goal-progress_tokens"], ' +
+              '[class*="progress_tokens"], ' +
+              '[class*="tokens"], ' +
+              '[class*="goal-amount"]'
+            );
+            
+            for (const el of tokenElements) {
+              const text = el.textContent || '';
+              const tokenMatch = text.match(/(\d+)\s*tk/);
+              if (tokenMatch && tokenMatch[1]) {
+                result.goal.tokenAmount = parseInt(tokenMatch[1], 10);
+                console.log('Found token amount:', result.goal.tokenAmount);
+                break;
+              }
+            }
+            
             // Check if goal is completed
             result.goal.completed = result.goal.progress >= 95;
+            if (result.goal.completed) {
+              console.log('Goal is completed!');
+            }
           }
         } catch (e) {
           console.error("Error extracting goal info:", e);
         }
+        
+        return result;
+      });
+  
+      console.log(`Goal information for ${username}:`, goalInfo.goal);
+  
+      await page.close();
+      browserService.releaseBrowser(browser);
+      
+      // Combine the profile status with goal info
+      return {
+        isLive: profileStatus.isLive,
+        goal: goalInfo.goal,
+        nextBroadcast: profileStatus.nextBroadcast
+      };
+      
+    } catch (error) {
+      console.error(`Error getting status for ${username}:`, error);
+      if (page) {
+        try { await page.close(); } catch (e) {}
+      }
+      if (browser) {
+        browserService.releaseBrowser(browser);
       }
       
-      return result;
-    });
-
-    await page.close();
-    browserService.releaseBrowser(browser);
-    
-    return status;
-    
-  } catch (error) {
-    console.error(`Error getting status for ${username}:`, error);
-    if (page) {
-      try { await page.close(); } catch (e) {}
+      // Return default offline status on error
+      return { 
+        isLive: false, 
+        goal: { active: false, progress: 0, text: '', completed: false, tokenAmount: 0 },
+        nextBroadcast: null
+      };
     }
-    if (browser) {
-      browserService.releaseBrowser(browser);
-    }
-    
-    // Return default offline status on error
-    return { 
-      isLive: false, 
-      goal: { active: false, progress: 0, text: '', completed: false, tokenAmount: 0 },
-      nextBroadcast: null
-    };
   }
-}
 
 /**
  * Generate a visual progress bar

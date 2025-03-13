@@ -211,45 +211,53 @@ function generateUniqueKey() {
   return `${prefix}-${timestamp}-${randomPart}`;
 }
 
-/**
- * /profile - Change bot profile picture (admin only)
- */
 async function profileHandler(ctx) {
-  if (!isAdmin(ctx)) {
-    return ctx.reply("⚠️ This command is only available to the bot administrator.");
-  }
+    if (!isAdmin(ctx)) {
+      return ctx.reply("⚠️ This command is only available to the bot administrator.");
+    }
   
-  // Check if there's a photo in the message
-  if (ctx.message.reply_to_message && ctx.message.reply_to_message.photo) {
+    if (!ctx.message.reply_to_message || !ctx.message.reply_to_message.photo) {
+      return ctx.reply("⚠️ Please reply to a photo message with this command to set it as the bot's profile picture.");
+    }
+  
     const photo = ctx.message.reply_to_message.photo;
-    const fileId = photo[photo.length - 1].file_id; // Get the highest resolution
-    
+    const fileId = photo[photo.length - 1].file_id; // highest resolution
+  
     try {
-      // Get file path
-      const file = await ctx.telegram.getFile(fileId);
-      const fileUrl = `https://api.telegram.org/file/bot${config.BOT_TOKEN}/${file.file_path}`;
-      
-      // Download file
-      const response = await axios({
-        method: 'GET',
-        url: fileUrl,
-        responseType: 'arraybuffer'
-      });
-      
-      // Set as profile picture
-      await ctx.telegram.setProfilePhoto(Buffer.from(response.data));
-      
+      // 1) Get the file link from Telegram
+      const fileUrl = await ctx.telegram.getFileLink(fileId);
+      console.log("File URL from Telegram:", fileUrl);
+  
+      // 2) Check protocol
+      let fileBuffer;
+      const urlObject = new URL(fileUrl);
+  
+      if (urlObject.protocol === 'file:') {
+        // Read file from local path
+        // On Linux, urlObject.pathname typically starts with '/', so you can use it directly
+        const localPath = urlObject.pathname; 
+        fileBuffer = fs.readFileSync(localPath);
+      } else {
+        // Normal HTTP/HTTPS download with Axios
+        const response = await axios.get(fileUrl, { responseType: 'arraybuffer' });
+        if (!response.data || response.data.length === 0) {
+          throw new Error("Received empty file from Telegram.");
+        }
+        fileBuffer = Buffer.from(response.data);
+      }
+  
+      // 3) Set the chat photo
+      await ctx.telegram.setChatPhoto(ctx.chat.id, { source: fileBuffer });
       return ctx.reply("✅ Bot profile picture has been updated.");
+  
     } catch (error) {
-      console.error("Error updating profile picture:", error);
+      console.error("Error updating profile picture:", error.message);
       return ctx.reply("❌ Error updating profile picture. Please try again.");
     }
-  } else {
-    return ctx.reply(
-      "⚠️ Please reply to a photo message with this command to set it as the bot's profile picture."
-    );
   }
-}
+
+
+
 
 module.exports = {
   disableHandler,
