@@ -1,16 +1,17 @@
 /**
- * Fixed List Command - With chat ID error handling
+ * Fixed List Command - With proper message editing
  */
 const { Markup } = require('telegraf');
 const monitorService = require('../../services/monitorService');
 const monitoredUsersModel = require('../../models/monitoredUsers');
 const premiumUsersModel = require('../../models/premiumUsers');
 const autoRecordConfigModel = require('../../models/autoRecordConfig');
+const goalMonitorService = require('../../services/goalMonitorService');
 const config = require('../../config/config');
 
 /**
  * Handler for the /list command
- * This version doesn't use message editing which was causing errors
+ * Fixed to use message editing for actions
  */
 async function handler(ctx) {
   const chatId = ctx.message.chat.id;
@@ -23,7 +24,7 @@ async function handler(ctx) {
   }
 
   // Send initial message
-  await ctx.reply("🔍 Getting streamer statuses... This may take a moment.");
+  const loading = await ctx.reply("🔍 Getting streamer statuses... This may take a moment.");
   
   try {
     // Process users in batches to check their current status
@@ -38,7 +39,18 @@ async function handler(ctx) {
       const batchResults = await Promise.all(batch.map(async (user) => {
         try {
           console.log(`Checking status for ${user.username} in /list command...`);
-          const status = await monitorService.checkStripchatStatus(user.username);
+          
+          // For more accurate status, use goalMonitorService first if available
+          let status;
+          const isMonitored = goalMonitorService.activeGoalMonitors.has(user.username.toLowerCase());
+          
+          if (isMonitored) {
+            // Use the more accurate goalMonitorService
+            status = await goalMonitorService.getStreamStatus(user.username);
+          } else {
+            // Fall back to regular monitor service
+            status = await monitorService.checkStripchatStatus(user.username);
+          }
           
           return {
             ...user,
@@ -47,7 +59,8 @@ async function handler(ctx) {
             goalProgress: status.goal?.progress || 0,
             goalText: status.goal?.text || '',
             goalCompleted: status.goal?.completed || false,
-            lastChecked: new Date().toISOString()
+            lastChecked: new Date().toISOString(),
+            nextBroadcast: status.nextBroadcast || user.nextBroadcast
           };
         } catch (error) {
           console.error(`Error fetching status for ${user.username}:`, error);
@@ -82,15 +95,21 @@ async function handler(ctx) {
     
     for (let i = 0; i < updatedUsers.length; i++) {
       const user = updatedUsers[i];
+      
+      // Very reliable check for live status - combine sources
+      const isLive = user.isLive || 
+                    (goalMonitorService.activeGoalMonitors.has(user.username.toLowerCase()) && 
+                     goalMonitorService.activeGoalMonitors.get(user.username.toLowerCase()).isLive);
+                     
       // Basic status information
-      const status = user.isLive ? "🟢 LIVE" : "⚫ Offline";
+      const status = isLive ? "🔴 LIVE" : "⚫ Offline";
       const lastChecked = new Date(user.lastChecked).toLocaleString();
       
       // Start building this user's entry
       message += `${i + 1}. *${user.username}* - ${status}\n`;
       
       // Add goal information if available
-      if (user.isLive && user.hasGoal) {
+      if (isLive && user.hasGoal) {
         // Fix the progress percentage calculation
         const progressPercentage = parseFloat(user.goalProgress) || 0;
         const formattedPercentage = Math.floor(progressPercentage);
@@ -107,6 +126,9 @@ async function handler(ctx) {
         if (user.goalCompleted) {
           message += `   ✅ *Goal completed!*\n`;
         }
+      } else if (!isLive && user.nextBroadcast) {
+        // Show next scheduled broadcast if available
+        message += `   📆 *Next broadcast:* ${user.nextBroadcast}\n`;
       }
       
       // Add last checked time
@@ -144,7 +166,7 @@ async function handler(ctx) {
       inlineKeyboard.push(buttons);
     }
     
-    // Add refresh button - store chat ID directly, don't rely on regex parsing
+    // Add refresh button - store message ID to allow editing
     inlineKeyboard.push([
       Markup.button.callback('🔄 Refresh Status', `refreshList:${chatId}`)
     ]);
@@ -160,20 +182,31 @@ async function handler(ctx) {
       ]);
     }
     
-    // Send the complete message with buttons
-    await ctx.reply(message, {
-      parse_mode: 'Markdown',
-      reply_markup: { inline_keyboard: inlineKeyboard }
-    });
+    // Edit the initial message
+    await ctx.telegram.editMessageText(
+      chatId,
+      loading.message_id,
+      null,
+      message,
+      {
+        parse_mode: 'Markdown',
+        reply_markup: { inline_keyboard: inlineKeyboard }
+      }
+    );
     
   } catch (error) {
     console.error("Error getting streamer list:", error);
-    await ctx.reply("❌ Error fetching streamer statuses. Please try again.");
+    await ctx.telegram.editMessageText(
+      chatId,
+      loading.message_id,
+      null,
+      "❌ Error fetching streamer statuses. Please try again."
+    );
   }
 }
 
 /**
- * Fixed progress bar generator function
+ * Generate a visual progress bar
  */
 function generateProgressBar(percentage, length = 10) {
   // Make sure percentage is a number and between 0-100
@@ -191,10 +224,13 @@ function generateProgressBar(percentage, length = 10) {
 }
 
 /**
- * Action handler for the refresh button with improved error handling
+ * Action handler for the refresh button with improved message editing
  */
 async function handleRefreshAction(ctx) {
   try {
+    // Get the current message ID
+    const messageId = ctx.callbackQuery.message.message_id;
+    
     // Get the chat ID from the callback data with proper error handling
     let chatId;
     try {
@@ -228,27 +264,197 @@ async function handleRefreshAction(ctx) {
     // Answer the callback query first
     await ctx.answerCbQuery('Refreshing streamer statuses...');
     
-    // Re-run the handler with the chat ID
-    await handler({
-      message: { 
-        chat: { id: chatId }, 
-        from: { id: ctx.from.id } 
-      },
-      telegram: ctx.telegram,
-      reply: ctx.telegram.sendMessage.bind(ctx.telegram, chatId)
+    // Edit the message to show loading
+    await ctx.editMessageText(
+      "🔍 Refreshing streamer statuses... This may take a moment.",
+      { parse_mode: 'Markdown' }
+    );
+    
+    // Get the user ID
+    const userId = ctx.from.id;
+    
+    // Get all monitored users
+    const monitoredUsers = monitoredUsersModel.getAllMonitoredUsers();
+    const subbedUsers = monitoredUsers.filter(u => u.chatId === chatId);
+
+    if (subbedUsers.length === 0) {
+      return ctx.editMessageText("📋 No streamers are being monitored in this chat.");
+    }
+    
+    // Process users in batches to check their current status
+    const batchSize = 3;
+    let updatedUsers = [];
+    
+    // Process users in small batches
+    for (let i = 0; i < subbedUsers.length; i += batchSize) {
+      const batch = subbedUsers.slice(i, i + batchSize);
+      
+      // Process batch in parallel
+      const batchResults = await Promise.all(batch.map(async (user) => {
+        try {
+          console.log(`Checking status for ${user.username} in refresh action...`);
+          
+          // For more accurate status, use goalMonitorService first if available
+          let status;
+          const isMonitored = goalMonitorService.activeGoalMonitors.has(user.username.toLowerCase());
+          
+          if (isMonitored) {
+            // Use the more accurate goalMonitorService
+            status = await goalMonitorService.getStreamStatus(user.username);
+          } else {
+            // Fall back to regular monitor service
+            status = await monitorService.checkStripchatStatus(user.username);
+          }
+          
+          return {
+            ...user,
+            isLive: status.isLive,
+            hasGoal: status.goal?.active || false,
+            goalProgress: status.goal?.progress || 0,
+            goalText: status.goal?.text || '',
+            goalCompleted: status.goal?.completed || false,
+            lastChecked: new Date().toISOString(),
+            nextBroadcast: status.nextBroadcast || user.nextBroadcast
+          };
+        } catch (error) {
+          console.error(`Error fetching status for ${user.username}:`, error);
+          return user; // Return original user data if fetch fails
+        }
+      }));
+      
+      updatedUsers = [...updatedUsers, ...batchResults];
+      
+      // Save the updated status information
+      for (const updatedUser of batchResults) {
+        const index = monitoredUsers.findIndex(u => 
+          u.username === updatedUser.username && u.chatId === updatedUser.chatId);
+        if (index !== -1) {
+          monitoredUsers[index] = updatedUser;
+        }
+      }
+      await monitoredUsersModel.saveMonitoredUsers();
+    }
+    
+    // Build the message with fresh status data
+    let message = "📋 *Monitored Streamers:*\n\n";
+    const inlineKeyboard = [];
+    
+    // Check if user is premium for auto-record buttons
+    const isPremium = premiumUsersModel.isPremiumUser(userId);
+    
+    // Get user's current auto-record config
+    const autoRecordConfig = isPremium ? 
+      autoRecordConfigModel.getUserAutoRecordConfig(userId) || { usernames: [] } : 
+      { usernames: [] };
+    
+    for (let i = 0; i < updatedUsers.length; i++) {
+      const user = updatedUsers[i];
+      
+      // Very reliable check for live status - combine sources
+      const isLive = user.isLive || 
+                    (goalMonitorService.activeGoalMonitors.has(user.username.toLowerCase()) && 
+                     goalMonitorService.activeGoalMonitors.get(user.username.toLowerCase()).isLive);
+                     
+      // Basic status information
+      const status = isLive ? "🔴 LIVE" : "⚫ Offline";
+      const lastChecked = new Date(user.lastChecked).toLocaleString();
+      
+      // Start building this user's entry
+      message += `${i + 1}. *${user.username}* - ${status}\n`;
+      
+      // Add goal information if available
+      if (isLive && user.hasGoal) {
+        // Fix the progress percentage calculation
+        const progressPercentage = parseFloat(user.goalProgress) || 0;
+        const formattedPercentage = Math.floor(progressPercentage);
+        
+        // Generate a more visible progress bar using the fixed function
+        const progressBar = generateProgressBar(progressPercentage);
+        message += `   ${progressBar} ${formattedPercentage}%\n`;
+        
+        // Add goal text if available
+        if (user.goalText) {
+          message += `   🎯 *Goal:* ${user.goalText}\n`;
+        }
+        
+        if (user.goalCompleted) {
+          message += `   ✅ *Goal completed!*\n`;
+        }
+      } else if (!isLive && user.nextBroadcast) {
+        // Show next scheduled broadcast if available
+        message += `   📆 *Next broadcast:* ${user.nextBroadcast}\n`;
+      }
+      
+      // Add last checked time
+      message += `   _Last checked: ${lastChecked}_\n\n`;
+      
+      // Check if this user is already in auto-record
+      const isAutoRecorded = autoRecordConfig.usernames && 
+                           autoRecordConfig.usernames.some(u => 
+                             u.toLowerCase() === user.username.toLowerCase());
+      
+      // Add action buttons
+      const buttons = [];
+      
+      // Add remove button
+      buttons.push(
+        Markup.button.callback(`🗑️ Remove`, `removeUser:${user.username}:${chatId}`)
+      );
+      
+      // Add record button
+      buttons.push(
+        Markup.button.callback(`🎬 Record`, `quickRecord:${user.username}:${chatId}`)
+      );
+      
+      // Add auto-record toggle button if premium
+      if (isPremium) {
+        const autoRecordText = isAutoRecorded ? 
+          `❌ Remove Auto` : 
+          `🔄 Add Auto`;
+        
+        buttons.push(
+          Markup.button.callback(autoRecordText, `toggleAutoRecord:${user.username}:${chatId}`)
+        );
+      }
+      
+      inlineKeyboard.push(buttons);
+    }
+    
+    // Add refresh button
+    inlineKeyboard.push([
+      Markup.button.callback('🔄 Refresh Status', `refreshList:${chatId}`)
+    ]);
+    
+    // Add auto-record status button if premium
+    if (isPremium) {
+      const autoEnabled = autoRecordConfig.enabled ? "✅" : "❌";
+      inlineKeyboard.push([
+        Markup.button.callback(
+          `${autoEnabled} Auto-Record: ${autoRecordConfig.enabled ? "ON" : "OFF"}`, 
+          `toggleAutoRecordStatus:${chatId}`
+        )
+      ]);
+    }
+    
+    // Edit the message with the updated content
+    await ctx.editMessageText(message, {
+      parse_mode: 'Markdown',
+      reply_markup: { inline_keyboard: inlineKeyboard }
     });
+    
   } catch (error) {
     console.error("Error in handleRefreshAction:", error);
     try {
       await ctx.answerCbQuery('An error occurred. Please try again.', { show_alert: true });
+      await ctx.editMessageText("❌ Error refreshing streamer statuses. Please try again.");
     } catch (e) {
-      console.error("Error sending callback answer:", e);
+      console.error("Error sending error message:", e);
     }
   }
 }
 
 /**
- * Action handler for quick record button with improved error handling
+ * Action handler for quick record button with improved message editing
  */
 async function handleQuickRecordAction(ctx) {
   try {
@@ -315,7 +521,7 @@ async function handleQuickRecordAction(ctx) {
 }
 
 /**
- * Action handler for toggling auto-record for a user with improved error handling
+ * Action handler for toggling auto-record for a user with improved message editing
  */
 async function handleToggleAutoRecordAction(ctx) {
   try {
@@ -384,6 +590,10 @@ async function handleToggleAutoRecordAction(ctx) {
     if (isAutoRecorded) {
       // Remove from auto-record
       result = await autoRecordConfigModel.removeUsernameFromAutoRecord(userId, username);
+      
+      // Also stop goal monitoring for this user
+      goalMonitorService.stopMonitoringGoal(username);
+      
       if (result.success) {
         await ctx.answerCbQuery(`Removed ${username} from auto-record`, { show_alert: true });
       } else {
@@ -397,6 +607,9 @@ async function handleToggleAutoRecordAction(ctx) {
       
       result = await autoRecordConfigModel.addUsernameToAutoRecord(userId, username);
       
+      // Start goal monitoring for this user
+      goalMonitorService.startMonitoringGoal(username, [chatId], [userId]);
+      
       if (result.success) {
         await ctx.answerCbQuery(`Added ${username} to auto-record list`, { show_alert: true });
       } else {
@@ -404,20 +617,9 @@ async function handleToggleAutoRecordAction(ctx) {
       }
     }
     
-    // Create a fresh list instead of editing the current one
-    try {
-      // Use our improved refresh handler to regenerate the list
-      await handler({
-        message: { 
-          chat: { id: chatId }, 
-          from: { id: userId } 
-        },
-        telegram: ctx.telegram,
-        reply: ctx.telegram.sendMessage.bind(ctx.telegram, chatId)
-      });
-    } catch (refreshError) {
-      console.error("Error refreshing list after toggle auto-record:", refreshError);
-    }
+    // Refresh the list display by basically calling the refresh action
+    await handleRefreshAction(ctx);
+    
   } catch (error) {
     console.error("Error in handleToggleAutoRecordAction:", error);
     try {
@@ -429,7 +631,7 @@ async function handleToggleAutoRecordAction(ctx) {
 }
 
 /**
- * Action handler for toggling auto-record status with improved error handling
+ * Action handler for toggling auto-record status with improved message editing
  */
 async function handleToggleAutoRecordStatusAction(ctx) {
   try {
@@ -481,27 +683,41 @@ async function handleToggleAutoRecordStatusAction(ctx) {
       // Toggle status
       if (userConfig.enabled) {
         await autoRecordConfigModel.disableAutoRecording(userId);
+        
+        // Stop monitoring for all usernames associated with this user
+        if (userConfig.usernames && userConfig.usernames.length > 0) {
+          userConfig.usernames.forEach(username => {
+            const monitor = goalMonitorService.activeGoalMonitors.get(username.toLowerCase());
+            if (monitor) {
+              // Remove this user ID from the monitor
+              monitor.userIds.delete(userId);
+              
+              // If no more user IDs for this user, stop monitoring
+              if (monitor.userIds.size === 0) {
+                goalMonitorService.stopMonitoringGoal(username);
+              }
+            }
+          });
+        }
+        
         await ctx.answerCbQuery("Auto-recording disabled", { show_alert: true });
       } else {
         await autoRecordConfigModel.enableAutoRecording(userId, chatId);
+        
+        // Start monitoring for all usernames associated with this user
+        if (userConfig.usernames && userConfig.usernames.length > 0) {
+          userConfig.usernames.forEach(username => {
+            goalMonitorService.startMonitoringGoal(username, [chatId], [userId]);
+          });
+        }
+        
         await ctx.answerCbQuery("Auto-recording enabled!", { show_alert: true });
       }
     }
     
-    // Create a fresh list instead of editing the current one
-    try {
-      // Use our improved handler to regenerate the list
-      await handler({
-        message: { 
-          chat: { id: chatId }, 
-          from: { id: userId } 
-        },
-        telegram: ctx.telegram,
-        reply: ctx.telegram.sendMessage.bind(ctx.telegram, chatId)
-      });
-    } catch (refreshError) {
-      console.error("Error refreshing list after toggle auto-record status:", refreshError);
-    }
+    // Refresh the list by reusing the refresh handler
+    await handleRefreshAction(ctx);
+    
   } catch (error) {
     console.error("Error in handleToggleAutoRecordStatusAction:", error);
     try {

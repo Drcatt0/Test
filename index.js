@@ -1,10 +1,10 @@
 /**
- * Main Entry Point for Stripchat Monitor Bot
+ * Main Entry Point for Enhanced Stripchat Monitor Bot
  */
 const dns = require('dns');
 dns.setDefaultResultOrder('ipv4first');
 
-const { Telegraf } = require('telegraf');
+const { Telegraf, session } = require('telegraf');
 const fs = require('fs-extra');
 const path = require('path');
 const config = require('./config/config');
@@ -19,24 +19,31 @@ const bot = new Telegraf(config.BOT_TOKEN, {
   }
 });
 
+// Enable session for handling conversation state
+bot.use(session());
+
 // Import models
 const monitoredUsersModel = require('./models/monitoredUsers');
 const premiumUsersModel = require('./models/premiumUsers');
 const autoRecordConfigModel = require('./models/autoRecordConfig');
+
+// Import admin command handler for checking disabled commands
+const adminCommands = require('./handlers/commands/adminCommands');
 
 // Import handlers
 const commandHandler = require('./handlers/commandHandler');
 const messageHandler = require('./handlers/messageHandler');
 
 // Import services
-const monitorService = require('./services/monitorService');
+const notifierService = require('./services/notifierService');
+const goalMonitorService = require('./services/goalMonitorService'); // New import
 const memoryService = require('./services/memoryService');
 const browserService = require('./services/browserService');
 
 // Main startup function
 async function startBot() {
   try {
-    console.log("🚀 Starting Stripchat Monitor Bot...");
+    console.log("🚀 Starting Enhanced Stripchat Monitor Bot...");
     
     // Ensure data directory exists
     const dataDir = path.join(__dirname, 'data');
@@ -69,6 +76,20 @@ async function startBot() {
     
     console.log('✅ All data models loaded successfully');
 
+    // Add middleware to check for disabled commands
+    bot.use((ctx, next) => {
+      if (ctx.message && ctx.message.text && ctx.message.text.startsWith('/')) {
+        // Extract command without slash
+        const commandText = ctx.message.text.split(' ')[0].substring(1).split('@')[0];
+        
+        // Check if command is disabled using adminCommands.isCommandDisabled
+        if (adminCommands.isCommandDisabled && adminCommands.isCommandDisabled(commandText)) {
+          return ctx.reply(`⚠️ The command /${commandText} is currently disabled by the administrator.`);
+        }
+      }
+      return next();
+    });
+
     // Register command handlers
     commandHandler.registerCommands(bot);
     
@@ -82,7 +103,7 @@ async function startBot() {
       // Try to notify the user
       try {
         ctx.reply('⚠️ An error occurred while processing your request. Please try again with a shorter duration or try later.')
-          .catch(e => console.error('Error sending error notification:', e));
+          .catch(e => {});
       } catch (notifyError) {
         console.error('Error while trying to notify user about error:', notifyError);
       }
@@ -99,45 +120,64 @@ async function startBot() {
         { command: 'remove', description: 'Remove a monitored streamer' },
         { command: 'list', description: 'List all monitored streamers' },
         { command: 'record', description: 'Record a live stream' },
+        { command: 'info', description: 'Get detailed info about a streamer' },
+        { command: 'popular', description: 'View popular live streamers' },
+        { command: 'search', description: 'Search streamers by category (Premium)' },
         { command: 'premium', description: 'View premium info or activate a key' },
-        { command: 'autorecord', description: 'Configure automatic goal recording (premium)' },
+        { command: 'goalrecord', description: 'Configure automatic goal recording (Premium)' },
+        { command: 'extend', description: 'Extend a current recording (Premium)' },
+        { command: 'progress', description: 'Check recording progress' },
+        { command: 'help', description: 'Show help message and command list' },
         { command: 'start', description: 'Show welcome message and command list' }
       ]);
       
-      // Update monitoring intervals
-      config.MONITOR_INTERVAL = 5 * 60 * 1000; // Every 5 minutes
-      config.GOAL_CHECK_INTERVAL = 20 * 1000; // Every 20 seconds
+      // Set limits
+      config.FREE_USER_MAX_DURATION = 45; // 45 seconds for free users
+      config.PREMIUM_USER_MAX_DURATION = 1200; // 20 minutes for premium users
+      config.FREE_USER_COOLDOWN = 3 * 60 * 1000; // 3 minute cooldown
       
-      // Start monitoring service
-      console.log("🚀 Starting monitoring service...");
-      monitorService.startMonitoring(bot);
+      // Start enhanced goal monitoring service
+      console.log("🎯 Starting enhanced goal monitoring service...");
+      await goalMonitorService.startGoalMonitoring(bot);
+      
+      // Start notifier service
+      console.log("🔔 Starting enhanced notifier service...");
+      await notifierService.startNotifier(bot);
       
       // Start cleanup routines
       memoryService.startCleanupRoutines();
       
-      // Restart monitoring every 3 hours to ensure it's running properly
-      const monitorRestartInterval = setInterval(() => {
-        console.log("🔄 Scheduled monitoring service restart for health maintenance");
-        monitorService.restartMonitoring(bot);
-      }, 3 * 60 * 60 * 1000); // Every 3 hours
+      // Restart services every few hours to ensure they're running properly
+      const servicesRestartInterval = setInterval(() => {
+        console.log("🔄 Scheduled services restart for health maintenance");
+        notifierService.restartNotifier(bot);
+        
+        // Restart goal monitoring with small delay
+        setTimeout(() => {
+          goalMonitorService.stopGoalMonitoring();
+          goalMonitorService.startGoalMonitoring(bot);
+        }, 30000); // 30 seconds after notifier
+      }, 4 * 60 * 60 * 1000); // Every 4 hours
       
       console.log('✅ Bot startup complete');
       
       // Graceful shutdown handlers
       process.once('SIGINT', () => {
         console.log('SIGINT received. Shutting down gracefully...');
-        clearInterval(monitorRestartInterval);
+        clearInterval(servicesRestartInterval);
         memoryService.stopCleanupRoutines();
-        monitorService.stopMonitoring();
+        notifierService.stopNotifier();
+        goalMonitorService.stopGoalMonitoring();
         browserService.closeBrowser();
         bot.stop('SIGINT');
       });
       
       process.once('SIGTERM', () => {
         console.log('SIGTERM received. Shutting down gracefully...');
-        clearInterval(monitorRestartInterval);
+        clearInterval(servicesRestartInterval);
         memoryService.stopCleanupRoutines();
-        monitorService.stopMonitoring();
+        notifierService.stopNotifier();
+        goalMonitorService.stopGoalMonitoring();
         browserService.closeBrowser();
         bot.stop('SIGTERM');
       });

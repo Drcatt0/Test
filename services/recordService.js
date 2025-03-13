@@ -1,10 +1,10 @@
 /**
- * Recording Service
+ * Enhanced Recording Service
  */
 const fs = require('fs-extra');
 const path = require('path');
 const { spawn } = require('child_process');
-const { v4: uuidv4 } = require('uuid'); // Add uuid dependency or use Date.now() if not available
+const { v4: uuidv4 } = require('uuid');
 const browserService = require('./browserService');
 const monitoredUsersModel = require('../models/monitoredUsers');
 const premiumUsersModel = require('../models/premiumUsers');
@@ -24,7 +24,7 @@ const activeRecordingProcesses = new Map();
 function canUserRecord(userId) {
   // Premium users can always record
   if (premiumUsersModel.isPremiumUser(userId)) {
-    return { allowed: true };
+    return { allowed: true, isPremium: true };
   }
   
   const now = Date.now();
@@ -32,7 +32,7 @@ function canUserRecord(userId) {
   
   // If no previous recording or limit has expired
   if (!userRateLimits[userIdStr] || (now - userRateLimits[userIdStr].lastRecording > config.FREE_USER_COOLDOWN)) {
-    return { allowed: true };
+    return { allowed: true, isPremium: false };
   }
   
   // Calculate time remaining until they can record again
@@ -43,6 +43,7 @@ function canUserRecord(userId) {
   
   return { 
     allowed: false, 
+    isPremium: false,
     timeRemaining: timeRemaining,
     formattedTime: `${minutes}m ${seconds}s`
   };
@@ -315,7 +316,7 @@ async function recordStream(streamUrl, duration, outputFile, recordingId) {
   });
 }
 
-async function handleRecordedFile(ctx, outputFile, username, duration, timestamp) {
+async function handleRecordedFile(ctx, outputFile, username, duration, timestamp, isPremium) {
   try {
     // First check if the file exists
     const fileExists = await fs.pathExists(outputFile);
@@ -333,7 +334,9 @@ async function handleRecordedFile(ctx, outputFile, username, duration, timestamp
     }
     
     // Format caption
-    const caption = `${username} - ${duration} seconds - Recorded on ${new Date().toLocaleString()}`;
+    const caption = isPremium
+      ? `${username} - ${duration} seconds - Recorded on ${new Date().toLocaleString()} ✨ Premium Recording`
+      : `${username} - ${duration} seconds - Recorded on ${new Date().toLocaleString()}`;
     
     try {
       console.log(`📤 Sending video file (${(fileStats.size/1024/1024).toFixed(2)}MB) to Telegram...`);
@@ -371,44 +374,58 @@ async function executeRecord(ctx, username, duration) {
   const recordingId = `rec_${chatId}_${userId}_${Date.now()}`;
   
   // Lazy import to avoid circular dependency
-  const monitorService = require('./monitorService');
+  const notifierService = require('./notifierService');
   
   // Apply rate limiting for free users
   const rateLimit = canUserRecord(userId);
   if (!rateLimit.allowed) {
     await ctx.reply(
-      `⏱️ *Rate limit exceeded*\n\nFree users can record once every 3 minutes.\nPlease wait ${rateLimit.formattedTime} before recording again.\n\nUpgrade to premium to remove this limit with /premium`,
+      `⏱️ *Rate limit exceeded*\n\n` +
+      `Free users can record once every 3 minutes.\n` +
+      `Please wait ${rateLimit.formattedTime} before recording again.\n\n` +
+      `Upgrade to premium to remove this limit with /premium`,
       { parse_mode: 'Markdown' }
     );
     return false;
   }
   
   // Apply recording duration limits
-  const isPremium = premiumUsersModel.isPremiumUser(userId);
+  const isPremium = rateLimit.isPremium;
   let adjustedDuration = duration;
   
   if (!isPremium) {
-    // Free users are limited
+    // Free users are limited to 45 seconds
     if (adjustedDuration > config.FREE_USER_MAX_DURATION) {
-      await ctx.reply(`⚠️ Free users are limited to ${config.FREE_USER_MAX_DURATION} seconds of recording. Upgrade to premium for unlimited recording duration! Use /premium to learn more.`);
+      await ctx.reply(
+        `⚠️ Free users are limited to ${config.FREE_USER_MAX_DURATION} seconds of recording.\n` +
+        `Upgrade to premium for recordings up to 20 minutes!\n` +
+        `Use /premium to learn more.`
+      );
       adjustedDuration = config.FREE_USER_MAX_DURATION;
     }
     
     // Update the rate limit for free users
     updateUserRecordingTime(userId);
   } else if (adjustedDuration > config.PREMIUM_USER_MAX_DURATION) {
-    // Even premium users have a reasonable limit
-    await ctx.reply(`⚠️ Recording duration capped at ${config.PREMIUM_USER_MAX_DURATION / 60} minutes (${config.PREMIUM_USER_MAX_DURATION} seconds) to ensure quality. For longer recordings, you can always record again.`);
+    // Even premium users have a reasonable limit (20 minutes)
+    await ctx.reply(
+      `⚠️ Recording duration capped at ${config.PREMIUM_USER_MAX_DURATION / 60} minutes ` +
+      `(${config.PREMIUM_USER_MAX_DURATION} seconds) to ensure quality.\n` +
+      `For longer recordings, you can always record again or use /extend.`
+    );
     adjustedDuration = config.PREMIUM_USER_MAX_DURATION;
   }
   
-  // Don't check for active recording - allow concurrent recordings
+  // Register the recording as active
+  memoryService.addActiveRecording(chatId, username, userId, adjustedDuration, isPremium);
   
   // Check if the streamer is live
   await ctx.reply(`🔍 Checking if ${username} is live...${isPremium ? ' [✨ Premium]' : ''}`);
-  const status = await monitorService.checkStripchatStatus(username);
+  const status = await notifierService.getStreamerStatus(username);
   
   if (!status.isLive) {
+    // Remove from active recordings
+    memoryService.removeActiveRecording(`${chatId}_${username.toLowerCase()}`);
     await ctx.reply(`❌ ${username} is not live right now. Cannot record.`);
     return false;
   }
@@ -467,7 +484,7 @@ async function executeRecord(ctx, username, duration) {
       chatId, 
       statusMsg.message_id, 
       undefined, 
-      `🎬 Found working stream! Recording ${adjustedDuration} seconds...`
+      `🎬 Found working stream! Recording ${adjustedDuration} seconds...${isPremium ? ' [✨ Premium]' : ''}`
     );
     
     const result = await recordStream(streamUrl, adjustedDuration, outputFile, recordingId);
@@ -481,7 +498,7 @@ async function executeRecord(ctx, username, duration) {
     }
     
     // Handle the file
-    const success = await handleRecordedFile(ctx, outputFile, username, adjustedDuration, timestamp);
+    const success = await handleRecordedFile(ctx, outputFile, username, adjustedDuration, timestamp, isPremium);
     
     if (success) {
       // Store the working URL for future use
@@ -495,6 +512,9 @@ async function executeRecord(ctx, username, duration) {
     // Check memory usage
     await memoryService.checkMemoryUsage();
   }
+  
+  // Remove from active recordings
+  memoryService.removeActiveRecording(`${chatId}_${username.toLowerCase()}`);
   
   if (!recordingSuccess) {
     await ctx.reply("❌ Could not find a working stream URL. Please try again later.");
@@ -532,5 +552,6 @@ module.exports = {
   canUserRecord,
   updateUserRecordingTime,
   executeRecord,
-  cancelRecording
+  cancelRecording,
+  handleRecordedFile
 };

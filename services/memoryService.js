@@ -174,16 +174,21 @@ function cleanupStaleRecordings() {
  * Start all cleanup routines
  */
 function startCleanupRoutines() {
+  // Define default values if not in config
+  const memoryCheckIntervalTime = config.MEMORY_CHECK_INTERVAL || 5 * 60 * 1000; // 5 minutes
+  const fileCleanupIntervalTime = config.FILE_CLEANUP_INTERVAL || 30 * 60 * 1000; // 30 minutes
+  const recordingCleanupIntervalTime = config.RECORDING_CLEANUP_INTERVAL || 60 * 1000; // 1 minute
+  
   // Check memory every 5 minutes
-  memoryCheckInterval = setInterval(checkMemoryUsage, config.MEMORY_CHECK_INTERVAL);
+  memoryCheckInterval = setInterval(checkMemoryUsage, memoryCheckIntervalTime);
   
   // Clean up temporary files every 30 minutes
   fileCleanupInterval = setInterval(() => {
     cleanupTemporaryFiles(60 * 60 * 1000); // 1 hour
-  }, config.FILE_CLEANUP_INTERVAL);
+  }, fileCleanupIntervalTime);
   
   // Clean up stale recordings every minute
-  recordingCleanupInterval = setInterval(cleanupStaleRecordings, config.RECORDING_CLEANUP_INTERVAL);
+  recordingCleanupInterval = setInterval(cleanupStaleRecordings, recordingCleanupIntervalTime);
   
   console.log('Started memory management and cleanup routines');
 }

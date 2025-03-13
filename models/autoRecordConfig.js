@@ -2,7 +2,7 @@
  * Auto Record Configuration Data Model
  */
 const fs = require('fs-extra');
-const path = require('path'); // Added this import
+const path = require('path'); 
 const config = require('../config/config');
 
 // In-memory storage
@@ -98,6 +98,9 @@ async function loadAutoRecordConfig() {
   }
 }
 
+/**
+ * Save auto record config to JSON file
+ */
 async function saveAutoRecordConfig() {
   try {
     // Ensure directory exists
@@ -127,36 +130,12 @@ async function saveAutoRecordConfig() {
   }
 }
 
-async function saveAutoRecordConfig() {
-  try {
-    // Ensure directory exists
-    const dir = path.dirname(config.AUTO_RECORD_CONFIG_PATH);
-    await fs.ensureDir(dir);
-
-    const tempFile = `${config.AUTO_RECORD_CONFIG_PATH}.tmp`;
-
-    console.log(`📝 Attempting to write temp config file: ${tempFile}`);
-
-    // Write to temp file
-    await fs.writeFile(tempFile, JSON.stringify(autoRecordConfig, null, 2));
-
-    // Check if the temp file actually exists before renaming
-    if (!fs.existsSync(tempFile)) {
-      throw new Error(`🚨 Temp file missing! ${tempFile} was not created.`);
-    }
-
-    console.log(`📂 Renaming ${tempFile} → ${config.AUTO_RECORD_CONFIG_PATH}`);
-
-    await fs.rename(tempFile, config.AUTO_RECORD_CONFIG_PATH);
-
-    console.log(`💾 Successfully saved auto record config to ${config.AUTO_RECORD_CONFIG_PATH}`);
-    return true;
-  } catch (error) {
-    console.error("❌ Error saving autoRecordConfig.json:", error);
-    return false;
-  }
+/**
+ * Get all auto record configs
+ */
+function getAllAutoRecordConfigs() {
+  return autoRecordConfig;
 }
-
 
 /**
  * Get auto record config for a user
@@ -255,9 +234,6 @@ async function setAutoRecordingDuration(userId, duration) {
   return { success: true };
 }
 
-/**
- * Add a username to a user's auto-record list
- */
 /**
  * Add a username to a user's auto-record list
  */
@@ -365,6 +341,7 @@ function getUsersWithAutoRecordForUsername(username, chatId) {
 module.exports = {
   loadAutoRecordConfig,
   saveAutoRecordConfig,
+  getAllAutoRecordConfigs,
   getUserAutoRecordConfig,
   setUserAutoRecordConfig,
   enableAutoRecording,
