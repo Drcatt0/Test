@@ -1,12 +1,13 @@
 {
   "6222095069": {
-    "enabled": true,
+    "enabled": false,
     "duration": 180,
     "chatId": "6222095069",
     "lastNotification": null,
     "usernames": [
       "sweetyellis",
-      "Mila_Black"
+      "Mila_Black",
+      "hinatabrooks"
     ]
   }
 }
