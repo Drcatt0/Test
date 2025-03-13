@@ -80,9 +80,10 @@ async function checkAllStreamers(botInstance) {
     return;
   }
   
+  // Only log if there are users to check
   console.log(`📡 Checking ${monitoredUsers.length} monitored streamers...`);
   
-  // Group users by username to avoid duplicate checks
+  // Group users by username to avoid duplicate checks (more efficient)
   const usernameGroups = {};
   monitoredUsers.forEach(user => {
     const username = user.username.toLowerCase();
@@ -92,55 +93,87 @@ async function checkAllStreamers(botInstance) {
     usernameGroups[username].push(user);
   });
   
-  // Process usernames in batches to avoid overwhelming the system
-  const batchSize = 5;
+  // Get unique usernames
   const usernames = Object.keys(usernameGroups);
+  console.log(`└─ Processing ${usernames.length} unique streamers`);
+  
+  // Process usernames in larger batches for faster execution
+  const batchSize = 8; // Increased from 5 to 8
+  
+  // Track changes for summary
+  let liveCount = 0;
+  let offlineCount = 0;
+  let errorCount = 0;
   
   for (let i = 0; i < usernames.length; i += batchSize) {
     const batch = usernames.slice(i, i + batchSize);
     
     // Process batch in parallel
-    await Promise.all(batch.map(async (username) => {
+    const results = await Promise.allSettled(batch.map(async (username) => {
       try {
         const users = usernameGroups[username];
-        await checkStreamerStatus(username, users, botInstance);
+        const status = await checkStreamerStatus(username, users, botInstance);
+        return { username, isLive: status.isLive };
       } catch (error) {
-        console.error(`Error checking ${username}:`, error);
-        
         // Increment failed check counter
         const failCount = (failedChecks.get(username) || 0) + 1;
         failedChecks.set(username, failCount);
+        errorCount++;
+        return { username, error: true };
       }
     }));
     
-    // Small delay between batches
+    // Count status for summary
+    results.forEach(result => {
+      if (result.status === 'fulfilled') {
+        if (!result.value.error) {
+          if (result.value.isLive) {
+            liveCount++;
+          } else {
+            offlineCount++;
+          }
+        }
+      } else {
+        errorCount++;
+      }
+    });
+    
+    // Very small delay between batches
     if (i + batchSize < usernames.length) {
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      await new Promise(resolve => setTimeout(resolve, 500));
     }
   }
+  
+  // Print summary
+  console.log(`└─ Status check complete: ${liveCount} live, ${offlineCount} offline, ${errorCount} errors`);
 }
 
 /**
- * Check the status of a streamer
+ * Check the status of a streamer with better detection and notification
  */
 async function checkStreamerStatus(username, users, botInstance) {
   try {
-    // Get previous status
-    const prevStatus = streamStatus.get(username) || { isLive: false };
+    // Get previous status with reliable defaults
+    const prevStatus = streamStatus.get(username) || { 
+      isLive: false,
+      goal: { active: false, progress: 0, text: '', completed: false }
+    };
     
-    // Use goalMonitorService.getStreamStatus if available for more accurate status
+    // Track whether this is the first check for this username
+    const isFirstCheck = !streamStatus.has(username);
+    
+    // Use goalMonitorService.getStreamStatus for more accurate checks if available
     let status;
     const isMonitored = goalMonitorService.activeGoalMonitors.has(username.toLowerCase());
     
     if (isMonitored) {
       // Use the more accurate goalMonitorService
       status = await goalMonitorService.getStreamStatus(username);
-      
-      // Log that we're using goal monitor
       console.log(`Using goal monitor status for ${username}: Live=${status.isLive}`);
     } else {
-      // Get current status using our own method
+      // Use our own method for checking status
       status = await getStreamerStatus(username);
+      console.log(`Using regular status check for ${username}: Live=${status.isLive}`);
     }
     
     // Update status in our tracking
@@ -149,37 +182,72 @@ async function checkStreamerStatus(username, users, botInstance) {
     // Reset failed checks counter
     failedChecks.set(username, 0);
     
-    // Check if status changed
-    if (status.isLive !== prevStatus.isLive) {
+    // Status change detection (offline -> online or online -> offline)
+    const statusChanged = status.isLive !== prevStatus.isLive;
+    
+    // Only notify if status actually changed and this isn't the first check
+    if (statusChanged && !isFirstCheck) {
       console.log(`Status change for ${username}: ${prevStatus.isLive ? 'Live→Offline' : 'Offline→Live'}`);
       
       // Send notifications to all users monitoring this streamer
       for (const user of users) {
         try {
-          await sendStatusNotification(username, status, user.chatId, botInstance);
+          // Create notification key to avoid duplicate notifications
+          const notificationKey = `${username}_${user.chatId}_${status.isLive ? 'live' : 'offline'}`;
           
-          // Update user status in model
-          user.isLive = status.isLive;
-          user.lastChecked = new Date().toISOString();
+          // Check if we've sent this notification recently (within 10 minutes)
+          const lastTime = lastNotifications.get(notificationKey);
+          const now = Date.now();
           
-          if (status.nextBroadcast) {
-            user.nextBroadcast = status.nextBroadcast;
+          if (lastTime && (now - lastTime < 10 * 60 * 1000)) {
+            console.log(`Skipping notification for ${username} (${status.isLive ? 'live' : 'offline'}) - sent recently`);
+            continue;
           }
           
-          if (status.goal) {
-            user.hasGoal = status.goal.active;
-            user.goalProgress = status.goal.progress;
-            user.goalText = status.goal.text || '';
-            user.goalCompleted = status.goal.completed;
+          // Format the notification text
+          let text;
+          if (status.isLive) {
+            text = `🔴 *${username}* is now live! [Watch here](https://stripchat.com/${username})`;
+            
+            // Add goal information if available
+            if (status.goal && status.goal.active) {
+              const progressBar = generateProgressBar(status.goal.progress);
+              const progressPercentage = Math.floor(status.goal.progress);
+              
+              text += `\n\n🎯 *Goal Progress:* ${progressBar} ${progressPercentage}%`;
+              
+              if (status.goal.text) {
+                text += `\n*Goal:* ${status.goal.text}`;
+              }
+            }
+          } else {
+            text = `⚫ *${username}* is no longer live.`;
+            
+            // Add next broadcast information if available
+            if (status.nextBroadcast) {
+              text += `\n\n📆 *Next scheduled broadcast:*\n${status.nextBroadcast}`;
+            }
           }
+          
+          // Send the actual notification
+          await botInstance.telegram.sendMessage(user.chatId, text, { 
+            parse_mode: 'Markdown',
+            disable_web_page_preview: false
+          });
+          
+          // Record the notification time to avoid duplicates
+          lastNotifications.set(notificationKey, now);
+          
+          console.log(`Sent ${status.isLive ? 'live' : 'offline'} notification for ${username} to chat ${user.chatId}`);
         } catch (notifyError) {
           console.error(`Error notifying chat ${user.chatId} about ${username}:`, notifyError);
         }
       }
     }
     
-    // Update all users in the model
+    // Update all users in the model regardless of notification status
     for (const user of users) {
+      // Update user data in the monitored users model
       user.isLive = status.isLive;
       user.lastChecked = new Date().toISOString();
       
@@ -193,6 +261,28 @@ async function checkStreamerStatus(username, users, botInstance) {
         user.goalText = status.goal.text || '';
         user.goalCompleted = status.goal.completed;
       }
+      
+      // If streamer just came online, ensure they're added to goal monitoring if eligible
+      if (status.isLive && !prevStatus.isLive) {
+        // Check if this user has auto-record enabled for this streamer
+        const autoRecordConfig = autoRecordConfigModel.getAllAutoRecordConfigs();
+        
+        Object.entries(autoRecordConfig).forEach(([userId, config]) => {
+          if (config.enabled && 
+              config.chatId.toString() === user.chatId.toString() &&
+              (config.usernames.length === 0 || 
+               config.usernames.some(u => u.toLowerCase() === username.toLowerCase()))) {
+            
+            // Start goal monitoring for this streamer
+            console.log(`Starting goal monitoring for ${username} (User ID: ${userId}, just came online)`);
+            goalMonitorService.startMonitoringGoal(
+              username, 
+              [parseInt(user.chatId)], 
+              [parseInt(userId)]
+            );
+          }
+        });
+      }
     }
     
     // Save the updated user status
@@ -201,12 +291,17 @@ async function checkStreamerStatus(username, users, botInstance) {
     return status;
   } catch (error) {
     console.error(`Error checking ${username}:`, error);
+    
+    // Increment failed check counter
+    const failCount = (failedChecks.get(username) || 0) + 1;
+    failedChecks.set(username, failCount);
+    
     throw error;
   }
 }
 
 /**
- * Get the status of a streamer
+ * Get the status of a streamer - optimized for regular checks
  */
 async function getStreamerStatus(username) {
   let browser = null;
@@ -467,67 +562,6 @@ async function getStreamerStatus(username) {
 }
 
 /**
- * Send a status notification for a streamer
- */
-async function sendStatusNotification(username, status, chatId, botInstance) {
-  try {
-    // Create notification key to avoid duplicate notifications
-    const notificationKey = `${username}_${chatId}_${status.isLive ? 'live' : 'offline'}`;
-    
-    // Check if we've sent this notification recently
-    const lastTime = lastNotifications.get(notificationKey);
-    if (lastTime && Date.now() - lastTime < 60 * 60 * 1000) { // 1 hour cooldown
-      return false;
-    }
-    
-    // Prepare the message
-    let message = '';
-    
-    if (status.isLive) {
-      message = `🔴 *${username}* is now live! [Watch here](https://stripchat.com/${username})`;
-      
-      if (status.goal && status.goal.active) {
-        const progressPercentage = Math.floor(status.goal.progress);
-        const progressBar = generateProgressBar(progressPercentage);
-        
-        message += `\n\n🎯 *Goal Progress:* ${progressBar} ${progressPercentage}%`;
-        
-        if (status.goal.text) {
-          message += `\n*Goal:* ${status.goal.text}`;
-        }
-      }
-    } else {
-      message = `⚫ *${username}* is no longer live.`;
-      
-      if (status.nextBroadcast) {
-        message += `\n\n📆 *Next scheduled broadcast:*\n${status.nextBroadcast}`;
-      }
-    }
-    
-    // Send the notification
-    if (status.isLive && status.thumbnail) {
-      await botInstance.telegram.sendPhoto(chatId, status.thumbnail, {
-        caption: message,
-        parse_mode: 'Markdown'
-      });
-    } else {
-      await botInstance.telegram.sendMessage(chatId, message, {
-        parse_mode: 'Markdown',
-        disable_web_page_preview: false
-      });
-    }
-    
-    // Record the notification time
-    lastNotifications.set(notificationKey, Date.now());
-    
-    return true;
-  } catch (error) {
-    console.error(`Error sending notification for ${username} to ${chatId}:`, error);
-    return false;
-  }
-}
-
-/**
  * Recovery check for streamers with persistent failures
  */
 async function performRecoveryCheck() {
@@ -557,6 +591,59 @@ function generateProgressBar(percentage, length = 10) {
   const filled = '█'.repeat(progress);
   const empty = '░'.repeat(length - progress);
   return filled + empty;
+}
+
+/**
+ * Check and notify about streamer status - improved for direct calls
+ */
+async function checkAndNotify(username, chatId, botOrCtx) {
+  try {
+    // Determine if we should use the goal monitor (more accurate) or regular method
+    const isMonitored = goalMonitorService.activeGoalMonitors.has(username.toLowerCase());
+    let status;
+    
+    if (isMonitored) {
+      status = await goalMonitorService.getStreamStatus(username);
+    } else {
+      status = await getStreamerStatus(username);
+    }
+    
+    let text = `📢 *${username}* is not live right now.`;
+
+    if (status.isLive) {
+      text = `🔴 *${username}* is currently live! [Watch here](https://stripchat.com/${username})`;
+      if (status.goal && status.goal.active) {
+        const progressPercentage = Math.floor(status.goal.progress);
+        const progressBar = generateProgressBar(progressPercentage);
+        text += `\n\n🎯 *Goal Progress:* ${progressBar} ${progressPercentage}%`;
+        if (status.goal.text) {
+          text += `\n*Goal:* ${status.goal.text || "Special Goal"}`;
+        }
+      }
+    } else if (status.nextBroadcast) {
+      text += `\n\n📆 *Next scheduled broadcast:*\n${status.nextBroadcast}`;
+    }
+
+    try {
+      const telegram = botOrCtx.telegram || botOrCtx;
+      if (!telegram || typeof telegram.sendMessage !== 'function') {
+        console.error('Invalid bot instance provided to checkAndNotify');
+        return { isLive: status.isLive, goal: status.goal };
+      }
+
+      await telegram.sendMessage(chatId, text, { 
+        parse_mode: 'Markdown',
+        disable_web_page_preview: false
+      });
+    } catch (error) {
+      console.error(`Error sending notification to chat ${chatId}:`, error);
+    }
+
+    return { isLive: status.isLive, goal: status.goal };
+  } catch (error) {
+    console.error(`Error in checkAndNotify for ${username}:`, error);
+    throw error;
+  }
 }
 
 /**
@@ -595,5 +682,7 @@ module.exports = {
   restartNotifier,
   getStreamerStatus,
   checkStreamerStatus,
-  checkAllStreamers
+  checkAllStreamers,
+  checkAndNotify,
+  streamCheckInterval
 };

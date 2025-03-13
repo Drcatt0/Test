@@ -8,8 +8,6 @@ const { Telegraf, session } = require('telegraf');
 const fs = require('fs-extra');
 const path = require('path');
 const config = require('./config/config');
-const fileServer = require('./fileServer');
-fileServer.startServer();
 
 // Initialize the bot with local API server
 const bot = new Telegraf(config.BOT_TOKEN, {
@@ -36,21 +34,20 @@ const messageHandler = require('./handlers/messageHandler');
 
 // Import services
 const notifierService = require('./services/notifierService');
-const goalMonitorService = require('./services/goalMonitorService'); // New import
+const goalMonitorService = require('./services/goalMonitorService'); 
 const memoryService = require('./services/memoryService');
 const browserService = require('./services/browserService');
 
-// Main startup function
 async function startBot() {
   try {
     console.log("🚀 Starting Enhanced Stripchat Monitor Bot...");
-    
+
     // Ensure data directory exists
     const dataDir = path.join(__dirname, 'data');
     await fs.ensureDir(dataDir);
     console.log('📁 Data directory is ready');
 
-    // First, load all data models
+    // Load all data models
     console.log('📚 Loading data models...');
     
     try {
@@ -76,20 +73,6 @@ async function startBot() {
     
     console.log('✅ All data models loaded successfully');
 
-    // Add middleware to check for disabled commands
-    bot.use((ctx, next) => {
-      if (ctx.message && ctx.message.text && ctx.message.text.startsWith('/')) {
-        // Extract command without slash
-        const commandText = ctx.message.text.split(' ')[0].substring(1).split('@')[0];
-        
-        // Check if command is disabled using adminCommands.isCommandDisabled
-        if (adminCommands.isCommandDisabled && adminCommands.isCommandDisabled(commandText)) {
-          return ctx.reply(`⚠️ The command /${commandText} is currently disabled by the administrator.`);
-        }
-      }
-      return next();
-    });
-
     // Register command handlers
     commandHandler.registerCommands(bot);
     
@@ -99,20 +82,23 @@ async function startBot() {
     // Error handling for all bot commands
     bot.catch((err, ctx) => {
       console.error(`Error handling update ${ctx.update.update_id}:`, err);
-      
-      // Try to notify the user
       try {
-        ctx.reply('⚠️ An error occurred while processing your request. Please try again with a shorter duration or try later.')
+        ctx.reply('⚠️ An error occurred while processing your request. Please try again later.')
           .catch(e => {});
       } catch (notifyError) {
         console.error('Error while trying to notify user about error:', notifyError);
       }
     });
-    
+
+    // 🔥 Start the notifier **before** launching the bot
+    console.log("🚀 Starting Notifier Service...");
+    await notifierService.startNotifier(bot);  
+    console.log("✅ Notifier Service is running!");
+
     // Start the bot
     await bot.launch();
     console.log("✅ Telegram bot is up and running!");
-    
+
     try {
       // Set bot commands for the menu
       await bot.telegram.setMyCommands([
@@ -130,82 +116,49 @@ async function startBot() {
         { command: 'help', description: 'Show help message and command list' },
         { command: 'start', description: 'Show welcome message and command list' }
       ]);
-      
-      // Set limits
-      config.FREE_USER_MAX_DURATION = 45; // 45 seconds for free users
-      config.PREMIUM_USER_MAX_DURATION = 1200; // 20 minutes for premium users
-      config.FREE_USER_COOLDOWN = 3 * 60 * 1000; // 3 minute cooldown
-      
-      // Start enhanced goal monitoring service
-      console.log("🎯 Starting enhanced goal monitoring service...");
-      await goalMonitorService.startGoalMonitoring(bot);
-      
-      // Start notifier service
-      console.log("🔔 Starting enhanced notifier service...");
-      await notifierService.startNotifier(bot);
-      
+
       // Start cleanup routines
       memoryService.startCleanupRoutines();
-      
-      // Restart services every few hours to ensure they're running properly
-      const servicesRestartInterval = setInterval(() => {
-        console.log("🔄 Scheduled services restart for health maintenance");
-        notifierService.restartNotifier(bot);
-        
-        // Restart goal monitoring with small delay
-        setTimeout(() => {
-          goalMonitorService.stopGoalMonitoring();
-          goalMonitorService.startGoalMonitoring(bot);
-        }, 30000); // 30 seconds after notifier
-      }, 4 * 60 * 60 * 1000); // Every 4 hours
-      
+
       console.log('✅ Bot startup complete');
-     // Find this line in your index.js
-console.log('✅ Bot startup complete');
 
-// Add these lines immediately after it
-// Store bot instance globally so it can be accessed by the fix script
-global.botInstance = bot;
+      // Start continuous monitoring after a short delay
+      setTimeout(() => {
+        setupContinuousMonitoring(bot);
+      }, 5000);
 
-// Add delay to make sure everything is loaded first
-setTimeout(() => {
-  // Apply emergency monitoring fix
-  const fix = require('./fixMonitoring');
-  fix.fixMonitoring();
-}, 15000); // Wait 15 seconds after startup
-
-// Your existing code continues below - DON'T REMOVE THIS PART
-// Graceful shutdown handlers
-process.once('SIGINT', () => {
-  console.log('SIGINT received. Shutting down gracefully...');
-  // rest of your existing code
-        clearInterval(servicesRestartInterval);
-        memoryService.stopCleanupRoutines();
-        notifierService.stopNotifier();
-        goalMonitorService.stopGoalMonitoring();
-        browserService.closeBrowser();
-        bot.stop('SIGINT');
-      });
-      
-      process.once('SIGTERM', () => {
-        console.log('SIGTERM received. Shutting down gracefully...');
-        clearInterval(servicesRestartInterval);
-        memoryService.stopCleanupRoutines();
-        notifierService.stopNotifier();
-        goalMonitorService.stopGoalMonitoring();
-        browserService.closeBrowser();
-        bot.stop('SIGTERM');
-      });
-      
     } catch (err) {
       console.error('Error during startup:', err);
     }
-    
+
   } catch (err) {
     console.error('❌ Failed to start bot:', err);
     process.exit(1);
   }
 }
+
+// Graceful shutdown handlers
+process.once('SIGINT', () => {
+  console.log('SIGINT received. Shutting down gracefully...');
+  clearInterval(global.monitorRefreshInterval);
+  clearInterval(global.dailyRebuildInterval);
+  memoryService.stopCleanupRoutines();
+  notifierService.stopNotifier();
+  goalMonitorService.stopGoalMonitoring();
+  browserService.closeBrowser();
+  bot.stop('SIGINT');
+});
+
+process.once('SIGTERM', () => {
+  console.log('SIGTERM received. Shutting down gracefully...');
+  clearInterval(global.monitorRefreshInterval);
+  clearInterval(global.dailyRebuildInterval);
+  memoryService.stopCleanupRoutines();
+  notifierService.stopNotifier();
+  goalMonitorService.stopGoalMonitoring();
+  browserService.closeBrowser();
+  bot.stop('SIGTERM');
+});
 
 // Start the bot
 startBot().catch(err => {

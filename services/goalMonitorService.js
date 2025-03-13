@@ -1,7 +1,7 @@
 /**
  * Goal Monitor Service
  * Real-time monitoring of goals for live streams
- * With precise 15-second check interval
+ * With precise 10-second check interval
  */
 const browserService = require('./browserService');
 const monitoredUsersModel = require('../models/monitoredUsers');
@@ -25,16 +25,16 @@ async function startGoalMonitoring(botInstance) {
     clearInterval(monitorInterval);
   }
   
-  // Start the monitoring interval (every 15 seconds for real-time monitoring as requested)
+  // Start the monitoring interval (every 10 seconds for near real-time monitoring)
   monitorInterval = setInterval(async () => {
     try {
       await monitorAllGoals(botInstance);
     } catch (error) {
       console.error("❌ Error in goal monitoring routine:", error);
     }
-  }, 15 * 1000); // 15 seconds as requested
+  }, 10 * 1000); // 10 seconds for near-real-time updates
   
-  console.log("✅ Goal monitoring service started (checking every 15 seconds)");
+  console.log("✅ Goal monitoring service started (checking every 10 seconds)");
   
   // Initial setup of monitors
   await setupInitialMonitors();
@@ -137,11 +137,18 @@ function stopMonitoringGoal(username) {
  * Process all active goal monitors
  */
 async function monitorAllGoals(botInstance) {
-  const now = new Date();
-  console.log(`🎯 [${now.toISOString()}] Checking ${activeGoalMonitors.size} active goal monitors...`);
+  // Use a more concise log format
+  if (activeGoalMonitors.size > 0) {
+    console.log(`🎯 Checking ${activeGoalMonitors.size} active goal monitors...`);
+  }
   
-  // Process in small batches to avoid browser issues
-  const batchSize = 3;
+  // Skip processing if no monitors active (saves console spam)
+  if (activeGoalMonitors.size === 0) {
+    return;
+  }
+  
+  // Process in small batches to avoid browser issues but with faster parallel execution
+  const batchSize = 5; // Increased batch size for faster processing
   const usernames = Array.from(activeGoalMonitors.keys());
   
   for (let i = 0; i < usernames.length; i += batchSize) {
@@ -168,10 +175,8 @@ async function monitorAllGoals(botInstance) {
       }
     }));
     
-    // Small delay between batches
-    if (i + batchSize < usernames.length) {
-      await new Promise(resolve => setTimeout(resolve, 1000));
-    }
+    // No delay between batches for faster processing
+    // If we encounter browser issues, we can add a small delay back
   }
 }
 
@@ -187,31 +192,66 @@ async function checkGoalStatus(username, botInstance) {
     return false;
   }
   
-  // Check if we're checking too frequently
+  // Check if we're checking too frequently (minimum 5 seconds between checks)
   const now = Date.now();
   const timeSinceLastCheck = now - monitor.lastChecked;
   
-  if (timeSinceLastCheck < 5000) { // 5 seconds minimum between checks
+  if (timeSinceLastCheck < 5000) {
     return false;
   }
   
   // Update last checked time
   monitor.lastChecked = now;
   
-  // Check the streamer's status
-  const status = await getStreamStatus(username);
-  
-  // If user is not live, mark as offline
-  if (!status.isLive) {
-    if (monitor.isLive) {
-      console.log(`🔴→⚫ ${username} is no longer live, pausing goal monitoring`);
+  // Get the streamer's status with better error handling
+  let status;
+  try {
+    status = await getStreamStatus(username);
+  } catch (error) {
+    console.error(`Error getting stream status for ${username}:`, error);
+    
+    // Track failures
+    monitor.failCount = (monitor.failCount || 0) + 1;
+    
+    // If too many failures, stop monitoring
+    if (monitor.failCount > 5) {
+      console.log(`Too many failures (${monitor.failCount}) for ${username}, stopping goal monitor`);
+      activeGoalMonitors.delete(normalizedUsername);
     }
     
-    monitor.isLive = false;
     return false;
   }
   
-  // If user was offline but is now live again, send notification
+  // Reset fail count on successful check
+  monitor.failCount = 0;
+  
+  // If user is not live, mark as offline
+  if (!status.isLive) {
+    const wasLive = monitor.isLive;
+    monitor.isLive = false;
+    
+    // Only notify if state changed from live to offline
+    if (wasLive) {
+      console.log(`🔴→⚫ ${username} is no longer live, pausing goal monitoring`);
+      
+      // Notify all chats, but only if the streamer was previously live
+      for (const chatId of monitor.chatIds) {
+        try {
+          await botInstance.telegram.sendMessage(
+            chatId,
+            `⚫ *${username}* is no longer live. Goal monitoring paused.`,
+            { parse_mode: 'Markdown' }
+          );
+        } catch (error) {
+          console.error(`Error sending offline notification for ${username} to ${chatId}:`, error);
+        }
+      }
+    }
+    
+    return false;
+  }
+  
+  // If user was offline but is now live, send notification
   if (!monitor.isLive) {
     console.log(`⚫→🔴 ${username} is live again, resuming goal monitoring`);
     monitor.isLive = true;
@@ -228,44 +268,54 @@ async function checkGoalStatus(username, botInstance) {
           { parse_mode: 'Markdown' }
         );
       } catch (error) {
-        console.error(`Error sending live again notification for ${username} to ${chatId}:`, error);
+        console.error(`Error sending live notification for ${username} to ${chatId}:`, error);
       }
     }
   }
   
   // Skip if no active goal
   if (!status.goal || !status.goal.active) {
+    if (monitor.goal && monitor.goal.active) {
+      console.log(`${username}'s goal has been removed or completed`);
+      monitor.goal = null;
+    }
     return false;
   }
   
   // First check or goal reset, just store the data
   if (!monitor.goal) {
+    console.log(`${username} has a new goal: ${status.goal.text || 'No text'} (${status.goal.progress}%)`);
     monitor.goal = status.goal;
     
-    // Notify all chats about goal
-    for (const chatId of monitor.chatIds) {
-      try {
-        const progressBar = generateProgressBar(status.goal.progress);
-        const goalText = status.goal.text || "Special Goal";
-        
-        await botInstance.telegram.sendMessage(
-          chatId,
-          `🎯 *${username}* has an active goal!\n\n` +
-          `Goal: ${goalText}\n` +
-          `Progress: ${progressBar} ${Math.round(status.goal.progress)}%`,
-          { parse_mode: 'Markdown' }
-        );
-      } catch (error) {
-        console.error(`Error sending goal notification for ${username} to ${chatId}:`, error);
+    // Only notify about new goals with actual text or progress
+    if (status.goal.text || status.goal.progress > 0) {
+      // Notify all chats about goal
+      for (const chatId of monitor.chatIds) {
+        try {
+          const progressBar = generateProgressBar(status.goal.progress);
+          const goalText = status.goal.text || "Special Goal";
+          
+          await botInstance.telegram.sendMessage(
+            chatId,
+            `🎯 *${username}* has an active goal!\n\n` +
+            `Goal: ${goalText}\n` +
+            `Progress: ${progressBar} ${Math.round(status.goal.progress)}%`,
+            { parse_mode: 'Markdown' }
+          );
+        } catch (error) {
+          console.error(`Error sending goal notification for ${username} to ${chatId}:`, error);
+        }
       }
     }
     
     return true;
   }
   
-  // Check for goal change or reset
+  // Check for goal change
   if (status.goal.text && monitor.goal.text && 
       status.goal.text !== monitor.goal.text) {
+    
+    console.log(`${username}'s goal changed from "${monitor.goal.text}" to "${status.goal.text}"`);
     
     // Goal has changed, update and notify
     monitor.goal = status.goal;
@@ -292,10 +342,19 @@ async function checkGoalStatus(username, botInstance) {
   }
   
   // If significant progress update (10% change), send notification
+  // but not too frequently (minimum 2 minutes between progress updates)
   const progressDiff = Math.abs(status.goal.progress - monitor.goal.progress);
-  if (progressDiff >= 10) {
+  const timeForProgressUpdate = !monitor.lastProgressUpdate || 
+                              (now - monitor.lastProgressUpdate) > 2 * 60 * 1000;
+  
+  if (progressDiff >= 10 && timeForProgressUpdate) {
     // Update goal progress
+    const oldProgress = Math.round(monitor.goal.progress);
+    const newProgress = Math.round(status.goal.progress);
+    console.log(`${username}'s goal progress: ${oldProgress}% → ${newProgress}%`);
+    
     monitor.goal.progress = status.goal.progress;
+    monitor.lastProgressUpdate = now;
     
     // Notify all chats about progress update
     for (const chatId of monitor.chatIds) {
@@ -314,11 +373,17 @@ async function checkGoalStatus(username, botInstance) {
         console.error(`Error sending progress notification for ${username} to ${chatId}:`, error);
       }
     }
+  } else {
+    // Still update the progress value without notification
+    monitor.goal.progress = status.goal.progress;
   }
   
-  // Check for goal completion
-  if (status.goal.completed && !monitor.goal.completed) {
-    console.log(`🎉 Goal completed for ${username}!`);
+  // Check for goal completion (>= 95% is considered complete)
+  const isCompleted = status.goal.progress >= 95;
+  const wasCompleted = monitor.goal.completed || false;
+  
+  if (isCompleted && !wasCompleted) {
+    console.log(`🎉 Goal completed for ${username}! Progress: ${Math.round(status.goal.progress)}%`);
     
     // Update goal status
     monitor.goal.completed = true;
@@ -328,7 +393,7 @@ async function checkGoalStatus(username, botInstance) {
       try {
         await botInstance.telegram.sendMessage(
           chatId,
-          `🎉 *${username}* has completed their goal!`,
+          `🎉 *${username}* has completed their goal! (${Math.round(status.goal.progress)}%)`,
           { parse_mode: 'Markdown' }
         );
       } catch (error) {
@@ -347,8 +412,20 @@ async function checkGoalStatus(username, botInstance) {
               continue;
             }
             
-            // Trigger recording
-            await triggerGoalRecording(username, status.goal, chatId, botInstance, eligibleUser);
+            console.log(`Triggering auto-recording for ${username} - User ID: ${eligibleUser.userId}`);
+            
+            // Trigger recording with better error handling
+            await triggerGoalRecording(username, status.goal, chatId, botInstance, eligibleUser)
+              .catch(err => {
+                console.error(`Error in auto-recording for ${username}:`, err);
+                
+                // Notify user about the recording failure
+                botInstance.telegram.sendMessage(
+                  chatId,
+                  `⚠️ Failed to auto-record ${username}'s goal completion. Please try recording manually with /record ${username} 60`,
+                  { parse_mode: 'Markdown' }
+                ).catch(() => {});
+              });
           } catch (recordError) {
             console.error(`Error recording goal for ${username} in chat ${chatId}:`, recordError);
           }
@@ -368,7 +445,7 @@ async function checkGoalStatus(username, botInstance) {
 }
 
 /**
- * Trigger a recording for a completed goal
+ * Trigger auto-recording for a completed goal
  */
 async function triggerGoalRecording(username, goal, chatId, botInstance, eligibleUser) {
   // Check if already recording
@@ -399,12 +476,13 @@ async function triggerGoalRecording(username, goal, chatId, botInstance, eligibl
     // Generate progress bar
     const progressBar = generateProgressBar(goal.progress);
     
-    // Notify the user
+    // Notify the user with a more informative message
     await botInstance.telegram.sendMessage(
       chatId,
       `🎬 *Auto-recording ${username} for ${duration} seconds!*\n\n` +
-      `🎯 *Goal:* ${sanitizedGoalText}\n` +
-      `📊 *Progress:* ${progressBar} ${Math.floor(goal.progress)}%`,
+      `🎯 *Goal Completed:* ${sanitizedGoalText}\n` +
+      `📊 *Progress:* ${progressBar} ${Math.floor(goal.progress)}%\n\n` +
+      `Recording will be sent when complete...`,
       { parse_mode: 'Markdown' }
     );
     
@@ -420,30 +498,55 @@ async function triggerGoalRecording(username, goal, chatId, botInstance, eligibl
       telegram: botInstance.telegram
     };
     
-    // Execute the recording
-    try {
-      await recordService.executeRecord(mockCtx, username, duration);
-      return true;
-    } catch (error) {
-      console.error(`Error recording ${username}:`, error);
-      
-      await botInstance.telegram.sendMessage(
-        chatId,
-        `⚠️ Failed to record ${username}. The stream may have ended.`,
-        { parse_mode: 'Markdown' }
-      );
-      
-      return false;
+    // Execute the recording with retry
+    let success = false;
+    let attempts = 0;
+    const maxAttempts = 2;
+    
+    while (!success && attempts < maxAttempts) {
+      attempts++;
+      try {
+        console.log(`Recording attempt ${attempts} for ${username}`);
+        await recordService.executeRecord(mockCtx, username, duration);
+        success = true;
+        
+        // Send success message
+        if (success) {
+          await botInstance.telegram.sendMessage(
+            chatId,
+            `✅ Successfully recorded ${username}'s goal completion!`,
+            { parse_mode: 'Markdown' }
+          );
+        }
+      } catch (error) {
+        console.error(`Error recording ${username} (attempt ${attempts}):`, error);
+        
+        if (attempts >= maxAttempts) {
+          await botInstance.telegram.sendMessage(
+            chatId,
+            `⚠️ Failed to record ${username} after ${attempts} attempts. The stream may have ended or changed format.`,
+            { parse_mode: 'Markdown' }
+          );
+        } else {
+          // Wait a bit before retrying
+          await new Promise(resolve => setTimeout(resolve, 5000));
+        }
+      }
     }
+    
+    return success;
   } catch (error) {
     console.error(`Error auto-recording ${username}:`, error);
-    return false;
+    throw error; // Rethrow so the caller can handle it
   } finally {
     // Always clean up
     memoryService.removeActiveAutoRecording(recordingKey);
   }
 }
 
+/**
+ * Get the stream status including goal information
+ */
 async function getStreamStatus(username) {
     let browser = null;
     let page = null;
@@ -492,10 +595,6 @@ async function getStreamStatus(username) {
       }).catch(() => {
         console.log(`Timeout waiting for profile elements for ${username}`);
       });
-  
-      // Log page details
-      const pageContent = await page.content();
-      console.log(`Profile page loaded for ${username} with ${pageContent.length} characters`);
   
       // Extract live status from profile page
       const profileStatus = await page.evaluate(() => {
@@ -581,7 +680,7 @@ async function getStreamStatus(username) {
             '[class*="epic-goal-progress"], ' + 
             '[class*="goal-progress"], ' + 
             '[role="progressbar"], ' +
-            '[class*="progressbar"], ' +
+            '[class*="progressbar"], ' + 
             '[class*="progress_inner"]'
           );
           
