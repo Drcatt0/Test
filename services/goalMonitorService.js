@@ -1,7 +1,6 @@
 /**
- * Goal Monitor Service
- * Real-time monitoring of goals for live streams
- * With precise 10-second check interval
+ * Goal Monitor Service - SIMPLIFIED
+ * Only notifies when goal reaches 100% and triggers recording
  */
 const browserService = require('./browserService');
 const monitoredUsersModel = require('../models/monitoredUsers');
@@ -18,7 +17,7 @@ let monitorInterval = null;
  * @param {Object} botInstance - Telegram bot instance
  */
 async function startGoalMonitoring(botInstance) {
-  console.log("🎯 Starting enhanced goal monitoring service...");
+  console.log("🎯 Starting simplified goal monitoring service...");
   
   // Stop any existing interval
   if (monitorInterval) {
@@ -137,15 +136,13 @@ function stopMonitoringGoal(username) {
  * Process all active goal monitors
  */
 async function monitorAllGoals(botInstance) {
-  // Use a more concise log format
-  if (activeGoalMonitors.size > 0) {
-    console.log(`🎯 Checking ${activeGoalMonitors.size} active goal monitors...`);
-  }
-  
   // Skip processing if no monitors active (saves console spam)
   if (activeGoalMonitors.size === 0) {
     return;
   }
+  
+  // Use a more concise log format
+  console.log(`🎯 Checking ${activeGoalMonitors.size} active goal monitors...`);
   
   // Process in small batches to avoid browser issues but with faster parallel execution
   const batchSize = 5; // Increased batch size for faster processing
@@ -174,21 +171,18 @@ async function monitorAllGoals(botInstance) {
         }
       }
     }));
-    
-    // No delay between batches for faster processing
-    // If we encounter browser issues, we can add a small delay back
   }
 }
 
 /**
  * Check the status of a goal for a specific streamer
+ * Simplified to only notify on 100% completion
  */
 async function checkGoalStatus(username, botInstance) {
   const normalizedUsername = username.toLowerCase();
   const monitor = activeGoalMonitors.get(normalizedUsername);
   
   if (!monitor) {
-    console.log(`No active monitor found for ${normalizedUsername}`);
     return false;
   }
   
@@ -286,28 +280,6 @@ async function checkGoalStatus(username, botInstance) {
   if (!monitor.goal) {
     console.log(`${username} has a new goal: ${status.goal.text || 'No text'} (${status.goal.progress}%)`);
     monitor.goal = status.goal;
-    
-    // Only notify about new goals with actual text or progress
-    if (status.goal.text || status.goal.progress > 0) {
-      // Notify all chats about goal
-      for (const chatId of monitor.chatIds) {
-        try {
-          const progressBar = generateProgressBar(status.goal.progress);
-          const goalText = status.goal.text || "Special Goal";
-          
-          await botInstance.telegram.sendMessage(
-            chatId,
-            `🎯 *${username}* has an active goal!\n\n` +
-            `Goal: ${goalText}\n` +
-            `Progress: ${progressBar} ${Math.round(status.goal.progress)}%`,
-            { parse_mode: 'Markdown' }
-          );
-        } catch (error) {
-          console.error(`Error sending goal notification for ${username} to ${chatId}:`, error);
-        }
-      }
-    }
-    
     return true;
   }
   
@@ -317,69 +289,17 @@ async function checkGoalStatus(username, botInstance) {
     
     console.log(`${username}'s goal changed from "${monitor.goal.text}" to "${status.goal.text}"`);
     
-    // Goal has changed, update and notify
+    // Goal has changed, update but don't notify
     monitor.goal = status.goal;
-    
-    // Notify all chats about new goal
-    for (const chatId of monitor.chatIds) {
-      try {
-        const progressBar = generateProgressBar(status.goal.progress);
-        const goalText = status.goal.text || "Special Goal";
-        
-        await botInstance.telegram.sendMessage(
-          chatId,
-          `🎯 *${username}* has a new goal!\n\n` +
-          `Goal: ${goalText}\n` +
-          `Progress: ${progressBar} ${Math.round(status.goal.progress)}%`,
-          { parse_mode: 'Markdown' }
-        );
-      } catch (error) {
-        console.error(`Error sending new goal notification for ${username} to ${chatId}:`, error);
-      }
-    }
-    
     return true;
   }
   
-  // If significant progress update (10% change), send notification
-  // but not too frequently (minimum 2 minutes between progress updates)
-  const progressDiff = Math.abs(status.goal.progress - monitor.goal.progress);
-  const timeForProgressUpdate = !monitor.lastProgressUpdate || 
-                              (now - monitor.lastProgressUpdate) > 2 * 60 * 1000;
+  // Update progress without notifications for intermediate progress
+  monitor.goal.progress = status.goal.progress;
   
-  if (progressDiff >= 10 && timeForProgressUpdate) {
-    // Update goal progress
-    const oldProgress = Math.round(monitor.goal.progress);
-    const newProgress = Math.round(status.goal.progress);
-    console.log(`${username}'s goal progress: ${oldProgress}% → ${newProgress}%`);
-    
-    monitor.goal.progress = status.goal.progress;
-    monitor.lastProgressUpdate = now;
-    
-    // Notify all chats about progress update
-    for (const chatId of monitor.chatIds) {
-      try {
-        const progressBar = generateProgressBar(status.goal.progress);
-        const goalText = status.goal.text || "Special Goal";
-        
-        await botInstance.telegram.sendMessage(
-          chatId,
-          `📊 *${username}* goal progress update!\n\n` +
-          `Goal: ${goalText}\n` +
-          `Progress: ${progressBar} ${Math.round(status.goal.progress)}%`,
-          { parse_mode: 'Markdown' }
-        );
-      } catch (error) {
-        console.error(`Error sending progress notification for ${username} to ${chatId}:`, error);
-      }
-    }
-  } else {
-    // Still update the progress value without notification
-    monitor.goal.progress = status.goal.progress;
-  }
-  
-  // Check for goal completion (>= 95% is considered complete)
-  const isCompleted = status.goal.progress >= 95;
+  // Check for goal completion (100% or very close to it)
+  // CHANGED: Only consider 100% completion (or very close to it)
+  const isCompleted = status.goal.progress >= 99;
   const wasCompleted = monitor.goal.completed || false;
   
   if (isCompleted && !wasCompleted) {
@@ -393,7 +313,7 @@ async function checkGoalStatus(username, botInstance) {
       try {
         await botInstance.telegram.sendMessage(
           chatId,
-          `🎉 *${username}* has completed their goal! (${Math.round(status.goal.progress)}%)`,
+          `🎉 *${username}* has completed their goal!`,
           { parse_mode: 'Markdown' }
         );
       } catch (error) {
@@ -473,15 +393,11 @@ async function triggerGoalRecording(username, goal, chatId, botInstance, eligibl
           .trim()
       : "Special Goal";
     
-    // Generate progress bar
-    const progressBar = generateProgressBar(goal.progress);
-    
     // Notify the user with a more informative message
     await botInstance.telegram.sendMessage(
       chatId,
       `🎬 *Auto-recording ${username} for ${duration} seconds!*\n\n` +
-      `🎯 *Goal Completed:* ${sanitizedGoalText}\n` +
-      `📊 *Progress:* ${progressBar} ${Math.floor(goal.progress)}%\n\n` +
+      `🎯 *Goal Completed:* ${sanitizedGoalText}\n\n` +
       `Recording will be sent when complete...`,
       { parse_mode: 'Markdown' }
     );
@@ -773,8 +689,8 @@ async function getStreamStatus(username) {
               }
             }
             
-            // Check if goal is completed
-            result.goal.completed = result.goal.progress >= 95;
+            // CHANGED: Only consider 100% as completed (or very close)
+            result.goal.completed = result.goal.progress >= 99;
             if (result.goal.completed) {
               console.log('Goal is completed!');
             }

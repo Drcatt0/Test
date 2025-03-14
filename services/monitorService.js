@@ -659,7 +659,115 @@ async function triggerGoalAutoRecording(user, botInstance, eligibleUser) {
     memoryService.removeActiveAutoRecording(recordingKey);
   }
 }
-
+/**
+ * Fast status check function optimized for speed and reliability
+ * This can be added to your list command or monitorService.js
+ */
+async function getFastStreamStatus(username) {
+  // First try to use any cached data from goal monitoring service
+  if (goalMonitorService.activeGoalMonitors.has(username.toLowerCase())) {
+    const monitor = goalMonitorService.activeGoalMonitors.get(username.toLowerCase());
+    return {
+      isLive: monitor.isLive,
+      goal: monitor.goal,
+      nextBroadcast: null
+    };
+  }
+  
+  // Try the quick check first (extremely fast but less accurate)
+  try {
+    const quickResult = await browserService.quickStreamCheck(username);
+    if (quickResult && typeof quickResult.isLive === 'boolean') {
+      return {
+        isLive: quickResult.isLive,
+        goal: { active: false, progress: 0, text: '', completed: false },
+        nextBroadcast: null
+      };
+    }
+  } catch (error) {
+    console.log(`Quick check failed for ${username}, falling back to standard check`);
+  }
+  
+  // Use standard browser check with optimized settings as fallback
+  try {
+    const browser = await browserService.getBrowser();
+    if (!browser) {
+      console.error(`Failed to get browser for ${username}`);
+      return { 
+        isLive: false, 
+        goal: { active: false, progress: 0, text: '', completed: false },
+        nextBroadcast: null
+      };
+    }
+    
+    const page = await browser.newPage();
+    
+    try {
+      // Set optimized browser settings
+      await page.setUserAgent(browserService.getRandomUserAgent());
+      await page.setRequestInterception(true);
+      
+      // Block most resources for speed
+      page.on('request', (req) => {
+        const resourceType = req.resourceType();
+        if (['document', 'xhr', 'fetch'].includes(resourceType)) {
+          req.continue();
+        } else {
+          req.abort();
+        }
+      });
+      
+      // Use shorter timeouts
+      await page.setDefaultNavigationTimeout(15000);
+      
+      // Only check profile page for live status (faster)
+      const cacheBuster = Date.now();
+      await page.goto(`https://stripchat.com/${username}/profile?_=${cacheBuster}`, {
+        waitUntil: 'domcontentloaded', // Faster load strategy
+        timeout: 15000
+      });
+      
+      // Wait for minimal elements
+      await Promise.race([
+        page.waitForSelector('body', { timeout: 5000 }),
+        new Promise(resolve => setTimeout(resolve, 5000))
+      ]);
+      
+      // Quick check for live badge
+      const status = await page.evaluate(() => {
+        const liveBadge = document.querySelector('.live-badge, [class*="live-badge"]');
+        return { 
+          isLive: !!liveBadge,
+          nextBroadcast: null,
+          goal: { active: false, progress: 0, text: '', completed: false }
+        };
+      });
+      
+      await page.close();
+      browserService.releaseBrowser(browser);
+      
+      return status;
+    } catch (error) {
+      console.error(`Status check failed for ${username}:`, error.message);
+      if (page) await page.close();
+      browserService.releaseBrowser(browser);
+      
+      // Return default status on error
+      return { 
+        isLive: false, 
+        goal: { active: false, progress: 0, text: '', completed: false },
+        nextBroadcast: null
+      };
+    }
+  } catch (error) {
+    console.error(`Browser creation failed for ${username}:`, error.message);
+    return { 
+      isLive: false, 
+      goal: { active: false, progress: 0, text: '', completed: false },
+      nextBroadcast: null
+    };
+  }
+}
 /**
  * Stop all monitoring routines
  */
@@ -689,6 +797,7 @@ function restartMonitoring(botInstance) {
 }
 
 // Export all functions
+// At the bottom of monitorService.js, update the export statement
 module.exports = {
   checkStripchatStatus,
   checkUsernameExists,
@@ -700,5 +809,6 @@ module.exports = {
   performFullStatusCheck,
   checkGoalsForAutoRecording,
   triggerGoalAutoRecording,
-  restartMonitoring
+  restartMonitoring,
+  getFastStreamStatus  // Add this line
 };

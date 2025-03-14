@@ -24,9 +24,9 @@ module.exports = {
   },
   
   // Recording settings
-  FREE_USER_MAX_DURATION: 30, // seconds
+  FREE_USER_MAX_DURATION: 45, // seconds
   FREE_USER_COOLDOWN: 3 * 60 * 1000, // 3 minutes in milliseconds
-  PREMIUM_USER_MAX_DURATION: 600, // 10 minutes in seconds
+  PREMIUM_USER_MAX_DURATION: 1800, // 30 minutes in seconds (increased from 10 minutes)
   
   // Browser settings
   BROWSER_ARGS: [
@@ -71,12 +71,11 @@ module.exports = {
   // Maximum auto-record monitors per user
   MAX_AUTO_RECORD_MONITORS: 3,
   FILE_SERVER_URL: 'http://98.32.82.246:3000', // Change to your server's public URL
-FILE_SERVER_PORT: 3000,
-FILE_STORAGE_PATH: './recordings', // Path to store recordings
-FILE_RETENTION_DAYS: 7, // Auto-delete files older than this
+  FILE_SERVER_PORT: 3000,
+  FILE_STORAGE_PATH: './recordings', // Path to store recordings
+  FILE_RETENTION_DAYS: 7, // Auto-delete files older than this
   // Concurrent operations settings
   MAX_CONCURRENT_RECORDINGS: 5, // Allow up to 5 recordings at once
   COMMAND_TIMEOUT: 60 * 1000 // Default timeout for commands (1 minute)
   // File server configuration
-
 };
