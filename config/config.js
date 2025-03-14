@@ -10,9 +10,6 @@ module.exports = {
   PREMIUM_USERS_PATH: './data/premiumUsers.json',
   AUTO_RECORD_CONFIG_PATH: './data/autoRecordConfig.json',
   
-  // Glitch configuration for file hosting
-  GLITCH_APP_URL: 'https://stripcht-files.glitch.me', // Glitch server URL
-  GLITCH_API_KEY: '1234ghj', // API key for authentication
   
   // Premium settings
   PREMIUM_KEYS: {
@@ -26,7 +23,7 @@ module.exports = {
   // Recording settings
   FREE_USER_MAX_DURATION: 45, // seconds
   FREE_USER_COOLDOWN: 3 * 60 * 1000, // 3 minutes in milliseconds
-  PREMIUM_USER_MAX_DURATION: 1800, // 30 minutes in seconds (increased from 10 minutes)
+  PREMIUM_USER_MAX_DURATION: 1800, // 30 minutes in seconds (increased from 20 minutes)
   
   // Browser settings
   BROWSER_ARGS: [

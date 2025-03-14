@@ -316,6 +316,9 @@ async function recordStream(streamUrl, duration, outputFile, recordingId) {
   });
 }
 
+/**
+ * Handle the recorded file and send it to Telegram properly
+ */
 async function handleRecordedFile(ctx, outputFile, username, duration, timestamp, isPremium) {
   try {
     // First check if the file exists
@@ -341,15 +344,14 @@ async function handleRecordedFile(ctx, outputFile, username, duration, timestamp
     try {
       console.log(`📤 Sending video file (${(fileStats.size/1024/1024).toFixed(2)}MB) to Telegram...`);
       
-      // With local Telegram API server, we can send files up to 2GB
-      await ctx.replyWithVideo({ 
-        source: outputFile,
-        filename: `${username}_${timestamp}.mp4`,
-        caption: caption
-      }, { 
-        // Longer timeout for large files
-        timeout: Math.max(60000, fileStats.size / 10000) // 1 minute minimum, or longer for large files
-      });
+      // Create a read stream for the file instead of passing the path directly
+      const fileStream = fs.createReadStream(outputFile);
+      
+      // Send the video using a stream to avoid URL parsing issues
+      await ctx.replyWithVideo(
+        { source: fileStream },
+        { caption: caption }
+      );
       
       console.log(`✅ Successfully sent video file to Telegram`);
       return true;
