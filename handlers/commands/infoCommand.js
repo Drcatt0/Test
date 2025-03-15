@@ -1,10 +1,9 @@
 /**
- * Info Command Handler
- * Gets detailed profile information about a streamer
+ * Info Command Handler - Fixed to use lightweightChecker
  */
 const browserService = require('../../services/browserService');
 const monitoredUsersModel = require('../../models/monitoredUsers');
-const monitorService = require('../../services/monitorService');
+const lightweightChecker = require('../../services/lightweightChecker');
 
 /**
  * /info - Get detailed information about a streamer
@@ -21,7 +20,8 @@ async function handler(ctx) {
   await ctx.reply(`🔍 Searching for information about ${username}...`);
   
   // Check if the user exists
-  const exists = await monitorService.checkUsernameExists(username);
+  const result = await browserService.quickStreamCheck(username);
+  const exists = result && result.exists !== false;
   
   if (!exists) {
     return ctx.reply(`❌ Could not find streamer: ${username}`);
@@ -41,26 +41,36 @@ async function handler(ctx) {
     // Send the formatted message
     await ctx.reply(infoMessage, { parse_mode: 'Markdown', disable_web_page_preview: true });
     
-    // If the streamer is live, send current status
-    if (streamerInfo.isLive) {
-      const liveMessage = `🔴 *${username}* is currently LIVE!`;
-      await ctx.reply(liveMessage, { parse_mode: 'Markdown' });
+    // Use lightweight checker to get current live status and goals
+    try {
+      const status = await lightweightChecker.getCachedStatus(username, {
+        includeGoal: true,
+        forceRefresh: true
+      });
       
-      // If we have goal information
-      if (streamerInfo.goal && streamerInfo.goal.active) {
-        const goalPercentage = Math.floor(streamerInfo.goal.progress);
-        const progressBar = generateProgressBar(goalPercentage);
+      // If the streamer is live, send current status
+      if (status.isLive) {
+        const liveMessage = `🔴 *${username}* is currently LIVE!`;
+        await ctx.reply(liveMessage, { parse_mode: 'Markdown' });
         
-        const goalMessage = 
-          `🎯 *Goal Progress:* ${progressBar} ${goalPercentage}%\n` +
-          (streamerInfo.goal.text ? `*Goal:* ${streamerInfo.goal.text}` : '');
-        
-        await ctx.reply(goalMessage, { parse_mode: 'Markdown' });
+        // If we have goal information
+        if (status.goal && status.goal.active) {
+          const goalPercentage = Math.floor(status.goal.progress);
+          const progressBar = generateProgressBar(goalPercentage);
+          
+          const goalMessage = 
+            `🎯 *Goal Progress:* ${progressBar} ${goalPercentage}%\n` +
+            (status.goal.text ? `*Goal:* ${status.goal.text}` : '');
+          
+          await ctx.reply(goalMessage, { parse_mode: 'Markdown' });
+        }
+      } else if (status.nextBroadcast) {
+        // If not live but has next broadcast time
+        await ctx.reply(`📆 *Next scheduled broadcast:*\n${status.nextBroadcast}`, 
+          { parse_mode: 'Markdown' });
       }
-    } else if (streamerInfo.nextBroadcast) {
-      // If not live but has next broadcast time
-      await ctx.reply(`📆 *Next scheduled broadcast:*\n${streamerInfo.nextBroadcast}`, 
-        { parse_mode: 'Markdown' });
+    } catch (statusError) {
+      console.error("Error getting live status:", statusError);
     }
   } catch (error) {
     console.error("Error getting streamer info:", error);

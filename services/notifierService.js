@@ -1,9 +1,8 @@
 /**
- * Enhanced Notifier Service
+ * Enhanced Notifier Service - Optimized for Network Efficiency
  * A more reliable system for monitoring streamers and sending notifications
- * Updated with 5-minute check interval
+ * Updated with 10-minute check interval & network optimizations
  */
-const puppeteer = require('puppeteer');
 const fs = require('fs-extra');
 const path = require('path');
 const monitoredUsersModel = require('../models/monitoredUsers');
@@ -11,7 +10,7 @@ const autoRecordConfigModel = require('../models/autoRecordConfig');
 const recordService = require('./recordService');
 const memoryService = require('./memoryService');
 const browserService = require('./browserService');
-const goalMonitorService = require('./goalMonitorService');
+const lightweightChecker = require('./lightweightChecker');
 const config = require('../config/config');
 
 // Notification intervals
@@ -39,18 +38,18 @@ async function startNotifier(botInstance) {
   
   console.log('✅ Notifier service initialized');
 
-  // Start stream check interval (every 5 minutes as requested)
+  // Start stream check interval (every 10 minutes for reduced network usage)
   streamCheckInterval = setInterval(async () => {
     const now = new Date();
-    console.log(`🔍 [${now.toISOString()}] Running stream status check (every 5 minutes)...`);
+    console.log(`🔍 [${now.toISOString()}] Running stream status check (every 10 minutes)...`);
     try {
       await checkAllStreamers(botInstance);
     } catch (error) {
       console.error("❌ Error in stream status check:", error);
     }
-  }, 5 * 60 * 1000); // 5 minutes as requested
+  }, config.MONITOR_INTERVAL || 10 * 60 * 1000); // 10 minutes default
   
-  // Start recovery interval (every 10 minutes)
+  // Start recovery interval (every 15 minutes)
   recoveryInterval = setInterval(async () => {
     console.log("🔄 Running recovery check...");
     try {
@@ -58,7 +57,7 @@ async function startNotifier(botInstance) {
     } catch (error) {
       console.error("❌ Error in recovery check:", error);
     }
-  }, 10 * 60 * 1000);
+  }, 15 * 60 * 1000);
 
   console.log('📡 All notifier routines are now active!');
 
@@ -72,7 +71,7 @@ async function startNotifier(botInstance) {
 }
 
 /**
- * Check all monitored streamers
+ * Check all monitored streamers with network optimization
  */
 async function checkAllStreamers(botInstance) {
   const monitoredUsers = monitoredUsersModel.getAllMonitoredUsers();
@@ -97,8 +96,8 @@ async function checkAllStreamers(botInstance) {
   const usernames = Object.keys(usernameGroups);
   console.log(`└─ Processing ${usernames.length} unique streamers`);
   
-  // Process usernames in larger batches for faster execution
-  const batchSize = 8; // Increased from 5 to 8
+  // Process usernames in batches for network efficiency
+  const batchSize = config.STATUS_CHECK_BATCH_SIZE || 5;
   
   // Track changes for summary
   let liveCount = 0;
@@ -138,9 +137,9 @@ async function checkAllStreamers(botInstance) {
       }
     });
     
-    // Very small delay between batches
+    // Delay between batches to reduce network load
     if (i + batchSize < usernames.length) {
-      await new Promise(resolve => setTimeout(resolve, 500));
+      await new Promise(resolve => setTimeout(resolve, config.STATUS_CHECK_BATCH_DELAY || 1000));
     }
   }
   
@@ -150,6 +149,7 @@ async function checkAllStreamers(botInstance) {
 
 /**
  * Check the status of a streamer with better detection and notification
+ * Network optimized version
  */
 async function checkStreamerStatus(username, users, botInstance) {
   try {
@@ -162,19 +162,11 @@ async function checkStreamerStatus(username, users, botInstance) {
     // Track whether this is the first check for this username
     const isFirstCheck = !streamStatus.has(username);
     
-    // Use goalMonitorService.getStreamStatus for more accurate checks if available
-    let status;
-    const isMonitored = goalMonitorService.activeGoalMonitors.has(username.toLowerCase());
-    
-    if (isMonitored) {
-      // Use the more accurate goalMonitorService
-      status = await goalMonitorService.getStreamStatus(username);
-      console.log(`Using goal monitor status for ${username}: Live=${status.isLive}`);
-    } else {
-      // Use our own method for checking status
-      status = await getStreamerStatus(username);
-      console.log(`Using regular status check for ${username}: Live=${status.isLive}`);
-    }
+    // Use optimized status checker with caching
+    const status = await lightweightChecker.getCachedStatus(username, {
+      includeGoal: prevStatus.isLive, // Only include goal info if previously live (saves bandwidth)
+      maxAge: prevStatus.isLive ? 2*60*1000 : 5*60*1000 // 2 minutes for live, 5 minutes for offline
+    });
     
     // Update status in our tracking
     streamStatus.set(username, status);
@@ -261,28 +253,6 @@ async function checkStreamerStatus(username, users, botInstance) {
         user.goalText = status.goal.text || '';
         user.goalCompleted = status.goal.completed;
       }
-      
-      // If streamer just came online, ensure they're added to goal monitoring if eligible
-      if (status.isLive && !prevStatus.isLive) {
-        // Check if this user has auto-record enabled for this streamer
-        const autoRecordConfig = autoRecordConfigModel.getAllAutoRecordConfigs();
-        
-        Object.entries(autoRecordConfig).forEach(([userId, config]) => {
-          if (config.enabled && 
-              config.chatId.toString() === user.chatId.toString() &&
-              (config.usernames.length === 0 || 
-               config.usernames.some(u => u.toLowerCase() === username.toLowerCase()))) {
-            
-            // Start goal monitoring for this streamer
-            console.log(`Starting goal monitoring for ${username} (User ID: ${userId}, just came online)`);
-            goalMonitorService.startMonitoringGoal(
-              username, 
-              [parseInt(user.chatId)], 
-              [parseInt(userId)]
-            );
-          }
-        });
-      }
     }
     
     // Save the updated user status
@@ -301,258 +271,17 @@ async function checkStreamerStatus(username, users, botInstance) {
 }
 
 /**
- * Get the status of a streamer - optimized for regular checks
+ * Get the status of a streamer - OPTIMIZED VERSION
+ * Uses lightweight HTTP checks when possible
  */
 async function getStreamerStatus(username) {
-  let browser = null;
-  let page = null;
-  
   try {
-    // Get browser instance
-    browser = await browserService.getBrowser();
-    if (!browser) {
-      throw new Error(`Failed to get browser instance for ${username}`);
-    }
-
-    // Create a new page
-    page = await browser.newPage();
-    
-    // Set random user agent
-    await page.setUserAgent(browserService.getRandomUserAgent());
-    
-    // Block unnecessary resources
-    await page.setRequestInterception(true);
-    page.on('request', (req) => {
-      const resourceType = req.resourceType();
-      if (['font', 'media', 'websocket'].includes(resourceType) || 
-          (resourceType === 'image' && !req.url().includes('thumb'))) {
-        req.abort();
-      } else {
-        req.continue();
-      }
+    // Use lightweight cached check
+    return await lightweightChecker.getCachedStatus(username, {
+      includeGoal: true
     });
-
-    // Set timeouts
-    await page.setDefaultNavigationTimeout(30000);
-    
-    // Navigate to the user's page with cache buster
-    const cacheBuster = Date.now();
-    await page.goto(`https://stripchat.com/${username}?_=${cacheBuster}`, {
-      waitUntil: 'domcontentloaded',  // Faster load time
-      timeout: 25000
-    });
-
-    // Wait for essential content (same as in goalMonitorService)
-    await page.waitForFunction(
-      () => {
-        // Check for live elements
-        const liveBadge = document.querySelector('.live-badge, [class*="live-badge"]');
-        const video = document.querySelector('video');
-        // Check for goal elements
-        const goalElem = document.querySelector('[class*="epic-goal-progress"], [class*="goal"], [role="progressbar"]');
-        
-        return (liveBadge !== null) || (video !== null) || (goalElem !== null);
-      },
-      { timeout: 10000 }
-    ).catch(() => {
-      console.log(`Timeout waiting for content on ${username}'s page`);
-    });
-
-    // Extract status information (same reliable approach as in goalMonitorService)
-    const status = await page.evaluate(() => {
-      const result = {
-        isLive: false,
-        goal: {
-          active: false,
-          progress: 0,
-          text: '',
-          completed: false,
-          tokenAmount: 0
-        },
-        nextBroadcast: null
-      };
-      
-      // Multiple robust checks for live status
-      const videoElem = document.querySelector('video');
-      const videoPlaying = videoElem && (videoElem.readyState > 0);
-      
-      const liveBadge = document.querySelector('.live-badge, [class*="live-badge"]');
-      const statusText = document.querySelector('[class*="status"]')?.innerText || '';
-      const isStatusLive = statusText.includes('LIVE') || statusText.includes('Live');
-      
-      const liveBroadcast = document.querySelector('[class*="live"], [class*="broadcast"], [class*="streaming"]');
-      
-      // Very reliable live detection combining multiple methods
-      result.isLive = videoPlaying || 
-                     (liveBadge !== null) || 
-                     isStatusLive || 
-                     (liveBroadcast !== null);
-      
-      // If not live, try to get next broadcast time
-      if (!result.isLive) {
-        const scheduleElements = document.querySelectorAll('.schedule-next-informer__weekday, .schedule-next-informer__link, [class*="schedule-next"], [class*="next-show"]');
-        if (scheduleElements.length > 0) {
-          let nextBroadcast = '';
-          scheduleElements.forEach(el => {
-            const text = el.textContent.trim();
-            if (text) nextBroadcast += text + ' ';
-          });
-          
-          // Try to find the time as well
-          const timeElements = document.querySelectorAll(
-            '.schedule-next-informer, [class*="schedule-next"], [class*="broadcast-time"]'
-          );
-          
-          timeElements.forEach(el => {
-            const text = el.textContent.trim();
-            if (text && (text.includes('AM') || text.includes('PM') || text.includes(':'))) {
-              nextBroadcast += text + ' ';
-            }
-          });
-          
-          result.nextBroadcast = nextBroadcast.trim().replace(/\s+/g, ' ');
-        }
-      }
-      
-      // If live, extract goal information
-      if (result.isLive) {
-        try {
-          // Look for goal progress elements (multi-selector for different page versions)
-          const goalProgressElements = document.querySelectorAll(
-            '[class*="epic-goal-progress"], ' + 
-            '[class*="goal-progress"], ' + 
-            '[role="progressbar"], ' +
-            '[class*="progressbar"], ' +
-            '[class*="progress_inner"]'
-          );
-          
-          if (goalProgressElements.length > 0) {
-            result.goal.active = true;
-            
-            // Try multiple methods to get progress percentage
-            for (const el of goalProgressElements) {
-              // Method 1: From style width
-              const style = window.getComputedStyle(el);
-              if (style.width && style.width.includes('%')) {
-                result.goal.progress = parseFloat(style.width);
-                break;
-              }
-              
-              // Method 2: From aria attributes
-              const valueNow = el.getAttribute('aria-valuenow');
-              if (valueNow) {
-                result.goal.progress = parseFloat(valueNow);
-                break;
-              }
-              
-              // Method 3: From data attributes
-              const dataValue = el.getAttribute('data-progress') || el.getAttribute('data-value');
-              if (dataValue) {
-                result.goal.progress = parseFloat(dataValue);
-                break;
-              }
-              
-              // Method 4: From explicit percentage text
-              const progressText = el.textContent || '';
-              const percentMatch = progressText.match(/(\d+(\.\d+)?)%/);
-              if (percentMatch && percentMatch[1]) {
-                result.goal.progress = parseFloat(percentMatch[1]);
-                break;
-              }
-            }
-            
-            // Alternative progress detection from status element
-            if (!result.goal.progress) {
-              const statusElements = document.querySelectorAll(
-                '[class*="epic-goal-progress_status"], ' +
-                '[class*="progress_status"], ' +
-                '[class*="percentage"], ' +
-                '[class*="progress-value"]'
-              );
-              
-              for (const el of statusElements) {
-                const text = el.textContent || '';
-                const percentMatch = text.match(/(\d+(\.\d+)?)%/);
-                if (percentMatch && percentMatch[1]) {
-                  result.goal.progress = parseFloat(percentMatch[1]);
-                  break;
-                }
-              }
-            }
-            
-            // Get token amount (try multiple selectors)
-            const tokenElements = document.querySelectorAll(
-              '[class*="epic-goal-progress_tokens"], ' +
-              '[class*="progress_tokens"], ' +
-              '[class*="tokens"], ' +
-              '[class*="goal-amount"]'
-            );
-            
-            for (const el of tokenElements) {
-              const text = el.textContent || '';
-              const tokenMatch = text.match(/(\d+)\s*tk/);
-              if (tokenMatch && tokenMatch[1]) {
-                result.goal.tokenAmount = parseInt(tokenMatch[1], 10);
-                break;
-              }
-            }
-            
-            // Get goal text (try multiple methods)
-            // Method 1: From dedicated goal info elements
-            const goalInfoElements = document.querySelectorAll(
-              '[class*="epic-goal-progress_information"], ' +
-              '[class*="progress_information"], ' +
-              '[class*="information"], ' +
-              '[class*="goal-text"], ' +
-              '[class*="goal-description"]'
-            );
-            
-            for (const el of goalInfoElements) {
-              const text = el.innerText.trim();
-              if (text && text.length > 3) {
-                result.goal.text = text;
-                break;
-              }
-            }
-            
-            // Method 2: Look for text with "Goal:" prefix
-            if (!result.goal.text) {
-              const allElements = document.querySelectorAll('*');
-              for (const el of allElements) {
-                const text = el.innerText || '';
-                if (text.includes('Goal:') || text.includes('goal:')) {
-                  result.goal.text = text.trim();
-                  break;
-                }
-              }
-            }
-            
-            // Check if goal is completed
-            result.goal.completed = result.goal.progress >= 95;
-          }
-        } catch (e) {
-          console.error("Error extracting goal info:", e);
-        }
-      }
-      
-      return result;
-    });
-
-    await page.close();
-    browserService.releaseBrowser(browser);
-    
-    return status;
-    
   } catch (error) {
     console.error(`Error getting status for ${username}:`, error);
-    if (page) {
-      try { await page.close(); } catch (e) {}
-    }
-    if (browser) {
-      browserService.releaseBrowser(browser);
-    }
-    
-    // Return default offline status on error
     return { 
       isLive: false, 
       goal: { active: false, progress: 0, text: '', completed: false, tokenAmount: 0 },
@@ -598,21 +327,33 @@ function generateProgressBar(percentage, length = 10) {
  */
 async function checkAndNotify(username, chatId, botOrCtx) {
   try {
-    // Determine if we should use the goal monitor (more accurate) or regular method
-    const isMonitored = goalMonitorService.activeGoalMonitors.has(username.toLowerCase());
-    let status;
-    
-    if (isMonitored) {
-      status = await goalMonitorService.getStreamStatus(username);
-    } else {
-      status = await getStreamerStatus(username);
-    }
+    // Use lightweight check first - with HTTP if possible
+    const status = await lightweightChecker.getCachedStatus(username, {
+      includeGoal: false // Skip goal info for initial notification to save bandwidth
+    });
     
     let text = `📢 *${username}* is not live right now.`;
 
     if (status.isLive) {
       text = `🔴 *${username}* is currently live! [Watch here](https://stripchat.com/${username})`;
-      if (status.goal && status.goal.active) {
+      
+      // Only if they're live, get goal info in a second request
+      if (!status.goal || !status.goal.active) {
+        // Use a simple HTTP check first to avoid browser automation if possible
+        const goalStatus = await lightweightChecker.getCachedStatus(username, {
+          includeGoal: true,
+          forceRefresh: true
+        });
+        
+        if (goalStatus.goal && goalStatus.goal.active) {
+          const progressPercentage = Math.floor(goalStatus.goal.progress);
+          const progressBar = generateProgressBar(progressPercentage);
+          text += `\n\n🎯 *Goal Progress:* ${progressBar} ${progressPercentage}%`;
+          if (goalStatus.goal.text) {
+            text += `\n*Goal:* ${goalStatus.goal.text || "Special Goal"}`;
+          }
+        }
+      } else if (status.goal.active) {
         const progressPercentage = Math.floor(status.goal.progress);
         const progressBar = generateProgressBar(progressPercentage);
         text += `\n\n🎯 *Goal Progress:* ${progressBar} ${progressPercentage}%`;

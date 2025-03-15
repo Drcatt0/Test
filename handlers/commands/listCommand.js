@@ -1,12 +1,13 @@
 /**
  * Improved List Command with Two-Level Menu
+ * FIXED: Properly displays goal information
  */
 const { Markup } = require('telegraf');
-const monitorService = require('../../services/monitorService');
 const monitoredUsersModel = require('../../models/monitoredUsers');
 const premiumUsersModel = require('../../models/premiumUsers');
 const autoRecordConfigModel = require('../../models/autoRecordConfig');
 const config = require('../../config/config');
+const lightweightChecker = require('../../services/lightweightChecker');
 
 // Cache to store user status data to avoid refetching
 const userStatusCache = new Map();
@@ -51,7 +52,11 @@ async function handler(ctx) {
           console.log(`Checking status for ${user.username} in /list command...`);
           
           // Get fresh status data
-          const status = await monitorService.checkStripchatStatus(user.username);
+          const status = await lightweightChecker.getCachedStatus(user.username, {
+            includeGoal: true // Make sure we get goal information
+          });
+          
+          console.log(`Status for ${user.username}: Live=${status.isLive}, Goal=${status.goal?.active ? 'Yes' : 'No'}, Progress=${status.goal?.progress}`);
           
           // Update cache
           userStatusCache.set(`${user.username.toLowerCase()}_${chatId}`, {
@@ -102,17 +107,26 @@ async function handler(ctx) {
     // Check if user is premium
     const isPremium = premiumUsersModel.isPremiumUser(userId);
     
-    // Add a row for each username
+    // Add a row for each username with enhanced information
     updatedUsers.forEach((user, index) => {
-      // Add status indicator to username button
-      const statusIcon = user.isLive ? "LIVE" : "Offline";
+      // Format the button display with more information
+      const statusIcon = user.isLive ? "🔴" : "⚫";
+      let buttonText = `${user.username} (${user.isLive ? "LIVE" : "Offline"})`;
+      
+      // Add goal information if available
+      if (user.isLive && user.hasGoal) {
+        const goalEmoji = "🎯";
+        const progressPercent = Math.floor(user.goalProgress || 0);
+        buttonText = `${user.username} ${statusIcon} ${goalEmoji} ${progressPercent}%`;
+      }
+      
       inlineKeyboard.push([
-        Markup.button.callback(`${user.username} (${statusIcon})`, `listUserDetails:${user.username}:${chatId}`)
+        Markup.button.callback(buttonText, `listUserDetails:${user.username}:${chatId}`)
       ]);
     });
     
     // Add refresh button
-    inlineKeyboard.push([Markup.button.callback('Refresh Status', `refreshList:${chatId}`)]);
+    inlineKeyboard.push([Markup.button.callback('🔄 Refresh Status', `refreshList:${chatId}`)]);
     
     // Edit the initial message
     await ctx.telegram.editMessageText(
@@ -186,7 +200,7 @@ async function handleUserDetails(ctx) {
     let message = `Details for ${username}:\n\n`;
     
     // Status information
-    const status = userData.isLive ? "LIVE" : "Offline";
+    const status = userData.isLive ? "🔴 LIVE" : "⚫ Offline";
     const lastChecked = new Date(userData.lastChecked).toLocaleString();
     
     message += `Status: ${status}\n`;
@@ -218,7 +232,7 @@ async function handleUserDetails(ctx) {
       }
       
       if (userData.goalCompleted) {
-        message += `Goal completed!\n\n`;
+        message += `Goal completed! 🎉\n\n`;
       }
     } else if (!userData.isLive && userData.nextBroadcast) {
       message += `Next broadcast: ${userData.nextBroadcast}\n\n`;
@@ -229,21 +243,21 @@ async function handleUserDetails(ctx) {
     
     // Basic actions
     actionButtons.push([
-      Markup.button.callback(`Remove`, `removeUser:${username}:${chatId}`)
+      Markup.button.callback(`❌ Remove`, `removeUser:${username}:${chatId}`)
     ]);
     
     // Recording options (different durations)
     if (userData.isLive) {
       actionButtons.push([
-        Markup.button.callback(`Record 30s`, `quickRecord:${username}:${chatId}:30s`),
-        Markup.button.callback(`Record 5m`, `quickRecord:${username}:${chatId}:5m`)
+        Markup.button.callback(`⏺️ Record 30s`, `quickRecord:${username}:${chatId}:30s`),
+        Markup.button.callback(`⏺️ Record 5m`, `quickRecord:${username}:${chatId}:5m`)
       ]);
       
       // Premium users get additional recording options
       if (isPremium) {
         actionButtons.push([
-          Markup.button.callback(`Record 10m`, `quickRecord:${username}:${chatId}:10m`),
-          Markup.button.callback(`Record 30m`, `quickRecord:${username}:${chatId}:30m`)
+          Markup.button.callback(`⏺️ Record 10m`, `quickRecord:${username}:${chatId}:10m`),
+          Markup.button.callback(`⏺️ Record 30m`, `quickRecord:${username}:${chatId}:30m`)
         ]);
       }
     }
@@ -251,8 +265,8 @@ async function handleUserDetails(ctx) {
     // Premium actions
     if (isPremium) {
       const autoRecordText = isAutoRecorded ? 
-        `Remove Goal Auto` : 
-        `Add Goal Auto`;
+        `🛑 Remove Goal Auto` : 
+        `🎯 Add Goal Auto`;
       
       actionButtons.push([
         Markup.button.callback(autoRecordText, `toggleAutoRecord:${username}:${chatId}`)
@@ -261,7 +275,7 @@ async function handleUserDetails(ctx) {
     
     // Back button
     actionButtons.push([
-      Markup.button.callback(`Back to List`, `backToList:${chatId}`)
+      Markup.button.callback(`⬅️ Back to List`, `backToList:${chatId}`)
     ]);
     
     // Edit the message with details and action buttons
@@ -294,21 +308,30 @@ async function handleBackToList(ctx) {
     // Create first-level buttons with just usernames
     const inlineKeyboard = [];
     
-    // Add a row for each username
+    // Add a row for each username with enhanced display info
     subbedUsers.forEach((user) => {
       // Use cached status if available
       const cachedData = userStatusCache.get(`${user.username.toLowerCase()}_${chatId}`);
-      const isLive = cachedData ? cachedData.data.isLive : user.isLive;
+      const userData = cachedData ? cachedData.data : user;
       
-      // Add status indicator to username button
-      const statusIcon = isLive ? "LIVE" : "Offline";
+      // Format the button display with enhanced information
+      const statusIcon = userData.isLive ? "🔴" : "⚫";
+      let buttonText = `${user.username} (${userData.isLive ? "LIVE" : "Offline"})`;
+      
+      // Add goal information if available
+      if (userData.isLive && userData.hasGoal) {
+        const goalEmoji = "🎯";
+        const progressPercent = Math.floor(userData.goalProgress || 0);
+        buttonText = `${user.username} ${statusIcon} ${goalEmoji} ${progressPercent}%`;
+      }
+      
       inlineKeyboard.push([
-        Markup.button.callback(`${user.username} (${statusIcon})`, `listUserDetails:${user.username}:${chatId}`)
+        Markup.button.callback(buttonText, `listUserDetails:${user.username}:${chatId}`)
       ]);
     });
     
     // Add refresh button
-    inlineKeyboard.push([Markup.button.callback('Refresh Status', `refreshList:${chatId}`)]);
+    inlineKeyboard.push([Markup.button.callback('🔄 Refresh Status', `refreshList:${chatId}`)]);
     
     // Edit the message
     await ctx.editMessageText(
@@ -370,7 +393,12 @@ async function handleRefreshAction(ctx) {
           console.log(`Checking status for ${user.username} in refresh action...`);
           
           // Get fresh status
-          const status = await monitorService.checkStripchatStatus(user.username);
+          const status = await lightweightChecker.getCachedStatus(user.username, {
+            includeGoal: true,
+            forceRefresh: true  // Force refresh when user requests it
+          });
+          
+          console.log(`Status for ${user.username}: Live=${status.isLive}, Goal=${status.goal?.active ? 'Yes' : 'No'}, Progress=${status.goal?.progress}`);
           
           // Update cache
           userStatusCache.set(`${user.username.toLowerCase()}_${chatId}`, {
@@ -415,20 +443,29 @@ async function handleRefreshAction(ctx) {
       await monitoredUsersModel.saveMonitoredUsers();
     }
     
-    // Create first-level buttons with just usernames
+    // Create first-level buttons with enhanced information display
     const inlineKeyboard = [];
     
-    // Add a row for each username
+    // Add a row for each username with enhanced display
     updatedUsers.forEach((user) => {
-      // Add status indicator to username button
-      const statusIcon = user.isLive ? "LIVE" : "Offline";
+      // Format the button display with enhanced information
+      const statusIcon = user.isLive ? "🔴" : "⚫";
+      let buttonText = `${user.username} (${user.isLive ? "LIVE" : "Offline"})`;
+      
+      // Add goal information if available
+      if (user.isLive && user.hasGoal) {
+        const goalEmoji = "🎯";
+        const progressPercent = Math.floor(user.goalProgress || 0);
+        buttonText = `${user.username} ${statusIcon} ${goalEmoji} ${progressPercent}%`;
+      }
+      
       inlineKeyboard.push([
-        Markup.button.callback(`${user.username} (${statusIcon})`, `listUserDetails:${user.username}:${chatId}`)
+        Markup.button.callback(buttonText, `listUserDetails:${user.username}:${chatId}`)
       ]);
     });
     
     // Add refresh button
-    inlineKeyboard.push([Markup.button.callback('Refresh Status', `refreshList:${chatId}`)]);
+    inlineKeyboard.push([Markup.button.callback('🔄 Refresh Status', `refreshList:${chatId}`)]);
     
     // Edit the message
     await ctx.editMessageText(
@@ -451,21 +488,17 @@ async function handleRefreshAction(ctx) {
 
 /**
  * Action handler for quick record button that triggers normal record flow
+ * FIXED: Now correctly handles the duration parameter
  */
 async function handleQuickRecordAction(ctx) {
   try {
     const username = ctx.match[1];
     const chatId = parseInt(ctx.match[2], 10);
+    const duration = ctx.match[3] || "30s"; // Get duration from pattern match
     const userId = ctx.from.id;
     
-    // Get time from match if available, otherwise default to 30 seconds
-    let duration = "30s";
-    if (ctx.match[3]) {
-      duration = ctx.match[3];
-    }
-    
     // Answer the callback query
-    await ctx.answerCbQuery(`Preparing to record ${username}...`);
+    await ctx.answerCbQuery(`Preparing to record ${username} for ${duration}...`);
     
     // Just create and send a message that looks like the /record command
     // This will be processed by the bot as a normal command
@@ -579,7 +612,8 @@ module.exports = {
       handler: handleRefreshAction
     },
     {
-      pattern: /^quickRecord:(.+):(-?\d+)$/,
+      // FIXED: Pattern now correctly captures the duration parameter
+      pattern: /^quickRecord:(.+):(-?\d+):(.+)$/,
       handler: handleQuickRecordAction
     },
     {

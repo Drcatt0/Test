@@ -1,8 +1,8 @@
 /**
- * Monitored Users Data Model
+ * Monitored Users Data Model - Fixed file handling
  */
 const fs = require('fs-extra');
-const path = require('path'); // Added this import for path manipulation
+const path = require('path');
 const config = require('../config/config');
 
 // In-memory storage
@@ -13,7 +13,12 @@ let monitoredUsers = [];
  */
 async function loadMonitoredUsers() {
   try {
-    // Check if the file exists first
+    // Ensure the data directory exists first
+    const dir = path.dirname(config.JSON_FILE_PATH);
+    await fs.ensureDir(dir);
+    console.log(`Ensured data directory exists: ${dir}`);
+    
+    // Check if the file exists
     if (!await fs.pathExists(config.JSON_FILE_PATH)) {
       console.log(`⚠️ File not found: ${config.JSON_FILE_PATH}. Creating a new one.`);
       monitoredUsers = [];
@@ -64,7 +69,7 @@ async function loadMonitoredUsers() {
 }
 
 /**
- * Save monitored users to JSON file
+ * Save monitored users to JSON file - IMPROVED ERROR HANDLING
  */
 async function saveMonitoredUsers() {
   try {
@@ -75,45 +80,25 @@ async function saveMonitoredUsers() {
     // Log the data being saved
     console.log(`💾 Saving ${monitoredUsers.length} monitored users to ${config.JSON_FILE_PATH}`);
     
-    // Write to a temp file first, then rename for atomic operation
-    const tempFile = `${config.JSON_FILE_PATH}.tmp`;
-    await fs.writeFile(tempFile, JSON.stringify(monitoredUsers, null, 2));
-    
-    // Verify the file was written
-    if (!await fs.pathExists(tempFile)) {
-      throw new Error(`Failed to write temp file: ${tempFile}`);
-    }
-    
-    // Rename the file (atomic operation)
-    await fs.rename(tempFile, config.JSON_FILE_PATH);
+    // Write directly to the file instead of using a temp file to avoid permission issues
+    await fs.writeFile(config.JSON_FILE_PATH, JSON.stringify(monitoredUsers, null, 2), 'utf-8');
     
     console.log(`✅ Successfully saved monitored users to disk`);
     return true;
   } catch (error) {
     console.error("❌ Error saving monitoredUsers.json:", error.message, error.stack);
-    return false;
-  }
-}
-
-/**
- * Save monitored users to JSON file
- */
-async function saveMonitoredUsers() {
-  try {
-    // Ensure the data directory exists
-    const dir = path.dirname(config.JSON_FILE_PATH);
-    await fs.ensureDir(dir);
     
-    // Write to a temp file first, then rename for atomic operation
-    const tempFile = `${config.JSON_FILE_PATH}.tmp`;
-    await fs.writeFile(tempFile, JSON.stringify(monitoredUsers, null, 2));
-    await fs.rename(tempFile, config.JSON_FILE_PATH);
-    
-    console.log(`Saved ${monitoredUsers.length} monitored users to disk`);
-    return true;
-  } catch (error) {
-    console.error("Error saving monitoredUsers.json:", error);
-    return false;
+    // Try a different approach if rename failed
+    try {
+      console.log("Trying alternative save method...");
+      // Write directly to the file
+      await fs.writeFile(config.JSON_FILE_PATH, JSON.stringify(monitoredUsers, null, 2), 'utf-8');
+      console.log("Alternative save method successful");
+      return true;
+    } catch (secondError) {
+      console.error("Second attempt at saving also failed:", secondError.message);
+      return false;
+    }
   }
 }
 

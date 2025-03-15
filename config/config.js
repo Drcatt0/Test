@@ -1,5 +1,6 @@
 /**
  * Bot Configuration
+ * Optimized for reduced network usage
  */
 module.exports = {
   // Bot token from BotFather
@@ -53,17 +54,30 @@ module.exports = {
   
   // Memory management thresholds
   MAX_MEMORY_USAGE_MB: 500,
-  BROWSER_INACTIVITY_TIMEOUT: 5 * 60 * 1000, // 5 minutes in milliseconds
+  BROWSER_INACTIVITY_TIMEOUT: 10 * 60 * 1000, // 10 minutes in milliseconds (increased from 5)
   
-  // Monitoring intervals - UPDATED
-  MONITOR_INTERVAL: 5 * 60 * 1000, // Check every 5 minutes (was 1 min)
-  GOAL_CHECK_INTERVAL: 15 * 1000, // Check goals every 15 seconds (NEW)
-  MEMORY_CHECK_INTERVAL: 5 * 60 * 1000, // Check memory every 5 minutes
-  FILE_CLEANUP_INTERVAL: 30 * 60 * 1000, // Clean files every 30 minutes
-  RECORDING_CLEANUP_INTERVAL: 60 * 1000, // Clean stale recordings every minute
+  // Monitoring intervals - OPTIMIZED
+  MONITOR_INTERVAL: 10 * 60 * 1000, // Check every 10 minutes (increased from 5)
+  GOAL_CHECK_INTERVAL: 30 * 1000, // Check goals every 30 seconds (increased from 15)
+  MEMORY_CHECK_INTERVAL: 10 * 60 * 1000, // Check memory every 10 minutes (increased from 5)
+  FILE_CLEANUP_INTERVAL: 60 * 60 * 1000, // Clean files every 60 minutes (increased from 30)
+  RECORDING_CLEANUP_INTERVAL: 2 * 60 * 1000, // Clean stale recordings every 2 minutes (increased from 1)
   
   // Browser pool settings
-  BROWSER_POOL_SIZE: 5, // Increased from 3 to 5 for concurrent operations
+  BROWSER_POOL_SIZE: 3, // Decreased from 5 to 3 for less memory and network usage
+  
+  // Cache settings
+  STATUS_CACHE_TIME: 2 * 60 * 1000, // Status cache validity: 2 minutes
+  OFFLINE_CACHE_TIME: 5 * 60 * 1000, // Offline status cache validity: 5 minutes
+  GOAL_CACHE_TIME: 30 * 1000, // Goal status cache: 30 seconds
+
+  // Browser optimization
+  BROWSER_REQUEST_TIMEOUT: 15000, // 15 seconds timeout for browser requests
+  BROWSER_PAGE_TIMEOUT: 3000, // 3 seconds timeout for page loads
+  
+  // Batch processing optimization
+  STATUS_CHECK_BATCH_SIZE: 5, // Process 5 users at a time (was higher)
+  STATUS_CHECK_BATCH_DELAY: 1000, // 1 second delay between batches
   
   // Maximum auto-record monitors per user
   MAX_AUTO_RECORD_MONITORS: 3,
@@ -71,8 +85,8 @@ module.exports = {
   FILE_SERVER_PORT: 3000,
   FILE_STORAGE_PATH: './recordings', // Path to store recordings
   FILE_RETENTION_DAYS: 7, // Auto-delete files older than this
+  
   // Concurrent operations settings
   MAX_CONCURRENT_RECORDINGS: 5, // Allow up to 5 recordings at once
   COMMAND_TIMEOUT: 60 * 1000 // Default timeout for commands (1 minute)
-  // File server configuration
 };
