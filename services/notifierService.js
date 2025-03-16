@@ -38,16 +38,20 @@ async function startNotifier(botInstance) {
   
   console.log('✅ Notifier service initialized');
 
-  // Start stream check interval (every 10 minutes for reduced network usage)
+  // Override the config value to ensure it runs at the expected interval
+  const monitorInterval = 5 * 60 * 1000; // Force 5 minutes for all monitoring
+  console.log(`Setting monitor interval to ${monitorInterval}ms (${monitorInterval/1000/60} minutes) - FIXED VALUE`);
+
+  // Start stream check interval (every 5 minutes)
   streamCheckInterval = setInterval(async () => {
     const now = new Date();
-    console.log(`🔍 [${now.toISOString()}] Running stream status check (every 10 minutes)...`);
+    console.log(`🔍 [${now.toISOString()}] Running stream status check (every 5 minutes)...`);
     try {
       await checkAllStreamers(botInstance);
     } catch (error) {
       console.error("❌ Error in stream status check:", error);
     }
-  }, config.MONITOR_INTERVAL || 10 * 60 * 1000); // 10 minutes default
+  }, monitorInterval); // 5 minutes forced
   
   // Start recovery interval (every 15 minutes)
   recoveryInterval = setInterval(async () => {
@@ -165,7 +169,8 @@ async function checkStreamerStatus(username, users, botInstance) {
     // Use optimized status checker with caching
     const status = await lightweightChecker.getCachedStatus(username, {
       includeGoal: prevStatus.isLive, // Only include goal info if previously live (saves bandwidth)
-      maxAge: prevStatus.isLive ? 2*60*1000 : 5*60*1000 // 2 minutes for live, 5 minutes for offline
+      maxAge: prevStatus.isLive ? 2*60*1000 : 5*60*1000, // 2 minutes for live, 5 minutes for offline
+      forceRefresh: true // Force refresh for monitoring
     });
     
     // Update status in our tracking
@@ -207,6 +212,11 @@ async function checkStreamerStatus(username, users, botInstance) {
               const progressPercentage = Math.floor(status.goal.progress);
               
               text += `\n\n🎯 *Goal Progress:* ${progressBar} ${progressPercentage}%`;
+              
+              // Add token amount if available
+              if (status.goal.tokenAmount) {
+                text += `\n*Tokens:* ${status.goal.tokenAmount}tk`;
+              }
               
               if (status.goal.text) {
                 text += `\n*Goal:* ${status.goal.text}`;
@@ -278,7 +288,8 @@ async function getStreamerStatus(username) {
   try {
     // Use lightweight cached check
     return await lightweightChecker.getCachedStatus(username, {
-      includeGoal: true
+      includeGoal: true,
+      forceRefresh: true // Always get fresh data for status calls
     });
   } catch (error) {
     console.error(`Error getting status for ${username}:`, error);
@@ -329,7 +340,8 @@ async function checkAndNotify(username, chatId, botOrCtx) {
   try {
     // Use lightweight check first - with HTTP if possible
     const status = await lightweightChecker.getCachedStatus(username, {
-      includeGoal: false // Skip goal info for initial notification to save bandwidth
+      includeGoal: false, // Skip goal info for initial notification to save bandwidth
+      forceRefresh: true  // Always refresh for explicit checks
     });
     
     let text = `📢 *${username}* is not live right now.`;

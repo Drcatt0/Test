@@ -3,142 +3,167 @@
     "username": "Mila_Black",
     "chatId": 6222095069,
     "isLive": false,
-    "lastChecked": "2025-03-15T07:11:23.149Z",
+    "lastChecked": "2025-03-16T04:22:07.294Z",
     "recentUrls": [
       "https://media-hls.doppiocdn.com/b-hls-08/185721227/185721227_720p.m3u8?playlistType=lowLatency"
     ],
     "hasGoal": false,
     "goalProgress": 0,
     "goalText": "",
-    "goalCompleted": false
+    "goalCompleted": false,
+    "goalTokenAmount": 0
   },
   {
     "username": "sweetyellis",
     "chatId": 6222095069,
     "isLive": false,
-    "lastChecked": "2025-03-15T07:11:22.851Z",
+    "lastChecked": "2025-03-16T04:22:07.207Z",
     "recentUrls": [
       "https://media-hls.doppiocdn.com/b-hls-08/191491190/191491190_720p.m3u8?playlistType=lowLatency"
     ],
     "hasGoal": false,
     "goalProgress": 0,
     "goalText": "",
-    "goalCompleted": false
+    "goalCompleted": false,
+    "goalTokenAmount": 0
   },
   {
     "username": "Sindy_Juxx",
     "chatId": 6222095069,
-    "isLive": false,
-    "lastChecked": "2025-03-15T07:11:22.538Z",
+    "isLive": true,
+    "lastChecked": "2025-03-16T04:22:07.914Z",
     "recentUrls": [
       "https://media-hls.doppiocdn.com/b-hls-08/190370710/190370710_720p.m3u8?playlistType=lowLatency"
     ],
-    "hasGoal": false,
-    "goalProgress": 0,
-    "goalText": "",
-    "goalCompleted": false
+    "hasGoal": true,
+    "goalProgress": 10.2,
+    "goalText": "Special Goal",
+    "goalCompleted": false,
+    "goalTokenAmount": 0
   },
   {
     "username": "hinatabrooks",
     "chatId": 6222095069,
     "isLive": false,
-    "lastChecked": "2025-03-15T07:11:23.853Z",
+    "lastChecked": "2025-03-16T04:22:06.608Z",
     "recentUrls": [
       "https://media-hls.doppiocdn.com/b-hls-08/64242117/64242117_720p.m3u8?playlistType=lowLatency"
     ],
     "hasGoal": false,
     "goalProgress": 0,
     "goalText": "",
-    "goalCompleted": false
+    "goalCompleted": false,
+    "goalTokenAmount": 0
   },
   {
     "username": "Anah_s",
     "chatId": 6222095069,
     "isLive": false,
-    "lastChecked": "2025-03-15T07:11:23.977Z",
+    "lastChecked": "2025-03-16T04:22:06.958Z",
     "recentUrls": [],
     "hasGoal": false,
     "goalProgress": 0,
     "goalText": "",
-    "goalCompleted": false
+    "goalCompleted": false,
+    "goalTokenAmount": 0
   },
   {
     "username": "LanaLee",
     "chatId": 6222095069,
     "isLive": false,
-    "lastChecked": "2025-03-15T07:11:23.672Z",
+    "lastChecked": "2025-03-16T04:22:09.884Z",
     "recentUrls": [],
     "hasGoal": false,
     "goalProgress": 0,
     "goalText": "",
-    "goalCompleted": false
+    "goalCompleted": false,
+    "goalTokenAmount": 0
   },
   {
     "username": "Aoki_sweet",
     "chatId": 6222095069,
-    "isLive": false,
-    "lastChecked": "2025-03-15T07:11:24.615Z",
+    "isLive": true,
+    "lastChecked": "2025-03-16T04:22:10.218Z",
     "recentUrls": [
       "https://media-hls.doppiocdn.com/b-hls-08/121249934/121249934_1080p60.m3u8?playlistType=lowLatency"
     ],
-    "hasGoal": false,
-    "goalProgress": 0,
-    "goalText": "",
-    "goalCompleted": false
+    "hasGoal": true,
+    "goalProgress": 61.5,
+    "goalText": "Special Goal",
+    "goalCompleted": false,
+    "goalTokenAmount": 0
   },
   {
     "username": "sigmasian",
     "chatId": 6222095069,
-    "isLive": true,
-    "lastChecked": "2025-03-15T07:11:25.242Z",
-    "recentUrls": [],
-    "hasGoal": true,
-    "goalProgress": 2.7,
-    "goalText": "//www.w3.org/2000/svg\",e=!1,a=[],c=function(){var n;t||((t=document.getElementById(\"svgDefs\"))||((t=document.createElementNS(o,\"defs\")).id=\"svgDefs\",(n=document.createElementNS(o,\"svg\")).style.display=\"none\",n.appendChild(t)),document.body.appendChild(n))},r=function(o,r){n||(n=document.createDocumentFragment()),n.appendChild(o),r&&a.push(r),e||(requestAnimationFrame((function(){n&&(c(),t.appendChild(n),a.forEach((function(t){return t()})),a=[],n=void 0,e=!1)})),e=!0)},s=!1,i={},u=function(t){var n=i[t];(null==n?void 0:n.svgData)&&function(t,n,e){var a=t[0],c=t[1],s=document.createElementNS(o,\"symbol\");s.id=\"\".concat(\"icons\",\"-\").concat(n),s.innerHTML=a,s.setAttribute(\"viewBox\",c),r(s,e)}(n.svgData,t,(function(){n.callbacks.forEach((function(t){return t()})),n.callbacks=[],n.errorCallbacks=[],delete n.svgData,n.status=\"rendered\"}))},d=function(t,n,o){try{var e=i[t]||{status:\"init\",callbacks:[],errorCallbacks:[]};if(i[t]=e,\"rendered\"===e.status)return void(null==n||n());n&&e.callbacks.push(n),o&&e.errorCallbacks.push(o),\"init\"===e.status&&(e.status=\"loading\",function(t,n,o){var e=\"\".concat(window.STATIC_PATH_REPLACED,\"/svg-icons/\").concat(t,\".json?\").concat(\"bcd90888\");if(\"undefined\"==typeof fetch){var a=new XMLHttpRequest;a.open(\"GET\",e),a.onload=function(){200!==a.status&&o(Error(\"Cannot load \".concat(t,\". Status \").concat(a.status)));try{var e=JSON.parse(a.responseText);n(e)}catch(n){o(Error(\"Cannot parse \".concat(t,\" json\")))}},a.onerror=function(){return o(Error(\"Cannot load \".concat(t)))},a.send()}else fetch(e,{priority:\"low\"}).then((function(t){if(!t.ok)throw Error(\"Status \".concat(t.status));return t.json()})).then((function(t){n(t)})).catch((function(n){o(Error(\"Cannot load \".concat(t,\". \").concat(null==n?void 0:n.message)))}))}(t,(function(n){e.status=\"loaded\",e.svgData=n,s&&u(t)}),(function(n){e.errorCallbacks.forEach((function(t){return t(n)})),delete i[t]})))}catch(t){console.error(t)}},l=function(){if(!s){s=!0;try{Object.keys(i).filter((function(t){var n;return\"loaded\"===(null===(n=i[t])||void 0===n?void 0:n.status)})).forEach((function(t){u(t)}))}catch(t){console.error(t)}}};window.SSR_ICONS&&window.SSR_ICONS.forEach((function(t){return d(t)})),\"loading\"!==document.readyState&&l(),window.svgLoader={importIcon:d,onDomReady:l}}()",
-    "goalCompleted": false
+    "isLive": false,
+    "lastChecked": "2025-03-16T04:22:09.103Z",
+    "recentUrls": [
+      "https://media-hls.doppiocdn.com/b-hls-08/110682488/110682488_720p.m3u8?playlistType=lowLatency"
+    ],
+    "hasGoal": false,
+    "goalProgress": 0,
+    "goalText": "",
+    "goalCompleted": false,
+    "goalTokenAmount": 0
   },
   {
     "username": "nacumi_mi",
     "chatId": 6222095069,
-    "isLive": true,
-    "lastChecked": "2025-03-15T07:11:25.085Z",
+    "isLive": false,
+    "lastChecked": "2025-03-16T04:22:09.232Z",
     "recentUrls": [
       "https://media-hls.doppiocdn.com/b-hls-08/160857671/160857671_720p.m3u8?playlistType=lowLatency"
     ],
-    "hasGoal": true,
-    "goalProgress": 7.8,
-    "goalText": "//www.w3.org/2000/svg\",e=!1,a=[],c=function(){var n;t||((t=document.getElementById(\"svgDefs\"))||((t=document.createElementNS(o,\"defs\")).id=\"svgDefs\",(n=document.createElementNS(o,\"svg\")).style.display=\"none\",n.appendChild(t)),document.body.appendChild(n))},r=function(o,r){n||(n=document.createDocumentFragment()),n.appendChild(o),r&&a.push(r),e||(requestAnimationFrame((function(){n&&(c(),t.appendChild(n),a.forEach((function(t){return t()})),a=[],n=void 0,e=!1)})),e=!0)},s=!1,i={},u=function(t){var n=i[t];(null==n?void 0:n.svgData)&&function(t,n,e){var a=t[0],c=t[1],s=document.createElementNS(o,\"symbol\");s.id=\"\".concat(\"icons\",\"-\").concat(n),s.innerHTML=a,s.setAttribute(\"viewBox\",c),r(s,e)}(n.svgData,t,(function(){n.callbacks.forEach((function(t){return t()})),n.callbacks=[],n.errorCallbacks=[],delete n.svgData,n.status=\"rendered\"}))},d=function(t,n,o){try{var e=i[t]||{status:\"init\",callbacks:[],errorCallbacks:[]};if(i[t]=e,\"rendered\"===e.status)return void(null==n||n());n&&e.callbacks.push(n),o&&e.errorCallbacks.push(o),\"init\"===e.status&&(e.status=\"loading\",function(t,n,o){var e=\"\".concat(window.STATIC_PATH_REPLACED,\"/svg-icons/\").concat(t,\".json?\").concat(\"bcd90888\");if(\"undefined\"==typeof fetch){var a=new XMLHttpRequest;a.open(\"GET\",e),a.onload=function(){200!==a.status&&o(Error(\"Cannot load \".concat(t,\". Status \").concat(a.status)));try{var e=JSON.parse(a.responseText);n(e)}catch(n){o(Error(\"Cannot parse \".concat(t,\" json\")))}},a.onerror=function(){return o(Error(\"Cannot load \".concat(t)))},a.send()}else fetch(e,{priority:\"low\"}).then((function(t){if(!t.ok)throw Error(\"Status \".concat(t.status));return t.json()})).then((function(t){n(t)})).catch((function(n){o(Error(\"Cannot load \".concat(t,\". \").concat(null==n?void 0:n.message)))}))}(t,(function(n){e.status=\"loaded\",e.svgData=n,s&&u(t)}),(function(n){e.errorCallbacks.forEach((function(t){return t(n)})),delete i[t]})))}catch(t){console.error(t)}},l=function(){if(!s){s=!0;try{Object.keys(i).filter((function(t){var n;return\"loaded\"===(null===(n=i[t])||void 0===n?void 0:n.status)})).forEach((function(t){u(t)}))}catch(t){console.error(t)}}};window.SSR_ICONS&&window.SSR_ICONS.forEach((function(t){return d(t)})),\"loading\"!==document.readyState&&l(),window.svgLoader={importIcon:d,onDomReady:l}}()",
-    "goalCompleted": false
+    "hasGoal": false,
+    "goalProgress": 0,
+    "goalText": "",
+    "goalCompleted": false,
+    "goalTokenAmount": 0
   },
   {
     "username": "in_your_eyes",
     "chatId": 6222095069,
     "isLive": false,
-    "lastChecked": "2025-03-15T07:11:25.767Z",
+    "lastChecked": "2025-03-16T04:22:09.749Z",
     "recentUrls": [],
     "hasGoal": false,
     "goalProgress": 0,
     "goalText": "",
-    "goalCompleted": false
+    "goalCompleted": false,
+    "goalTokenAmount": 0
   },
   {
     "username": "satanbabee",
     "chatId": 6222095069,
     "isLive": false,
-    "lastChecked": "2025-03-15T07:11:25.873Z",
+    "lastChecked": "2025-03-16T04:22:11.914Z",
     "recentUrls": [
       "https://media-hls.doppiocdn.com/b-hls-08/132556406/132556406_1080p60.m3u8?playlistType=lowLatency"
     ],
     "hasGoal": false,
     "goalProgress": 0,
     "goalText": "",
-    "goalCompleted": false
+    "goalCompleted": false,
+    "goalTokenAmount": 0
   },
   {
     "username": "morphesoull",
     "chatId": 6222095069,
     "isLive": false,
-    "lastChecked": "2025-03-15T07:11:25.718Z",
+    "lastChecked": "2025-03-16T04:22:11.432Z",
+    "recentUrls": [],
+    "hasGoal": false,
+    "goalProgress": 0,
+    "goalText": "",
+    "goalCompleted": false,
+    "goalTokenAmount": 0
+  },
+  {
+    "username": "SophiaPond_",
+    "chatId": 6222095069,
+    "isLive": false,
+    "lastChecked": "2025-03-16T04:22:11.884Z",
     "recentUrls": [],
     "hasGoal": false,
     "goalProgress": 0,

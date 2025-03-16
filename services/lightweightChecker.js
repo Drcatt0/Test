@@ -267,26 +267,39 @@ async function getLiveStreamerInfo(username) {
       
       // Look for goal text
       if (goalInfo.active) {
+        // Extract tokens amount
+        const tokenMatch = html.match(/epic-goal-progress__tokens[^>]*>(\d+)\s*tk</i);
+        if (tokenMatch && tokenMatch[1]) {
+          goalInfo.tokenAmount = parseInt(tokenMatch[1], 10);
+        }
+        
         // Try different patterns to find goal text
         const goalTextPatterns = [
           /goal[^:]*:\s*([^<]+)/i,
           /goal-text[^>]*>([^<]+)</i,
           /goal_text[^>]*>([^<]+)</i,
-          /goal-information[^>]*>([^<]+)</i
+          /goal-information[^>]*>([^<]+)</i,
+          /<span[^>]*>([^<]+)<\/span>\s*<\/span>\s*<\/div>/i
         ];
         
         for (const pattern of goalTextPatterns) {
           const match = html.match(pattern);
-          if (match && match[1]) {
+          if (match && match[1] && match[1].trim() && !match[1].includes('tk')) {
             goalInfo.text = match[1].trim();
             break;
           }
         }
         
-        // If no specific text found but we know there's a goal, use generic text
-        if (!goalInfo.text && goalInfo.active) {
-          goalInfo.text = "Goal in progress";
+        // If no text found, try another approach by looking at content between spans
+        if (!goalInfo.text) {
+          const spanMatches = html.match(/<span[^>]*epic-goal-progress__tokens[^>]*>[\d\s]+tk<\/span>\s*<span[^>]*>\s*([^<]+)\s*<\/span>/i);
+          if (spanMatches && spanMatches[1]) {
+            goalInfo.text = spanMatches[1].trim();
+          }
         }
+        
+        // Sanitize the goal text
+        goalInfo.text = sanitizeGoalText(goalInfo.text);
         
         // Mark as completed if progress is at or near 100%
         goalInfo.completed = goalInfo.progress >= 95;
@@ -392,6 +405,35 @@ function getRandomUserAgent() {
   ];
   
   return userAgents[Math.floor(Math.random() * userAgents.length)];
+}
+
+// Sanitize extracted goal text to remove JavaScript code
+function sanitizeGoalText(text) {
+  // If text is empty, return generic text
+  if (!text) return "Goal in progress";
+  
+  // Check if text looks like JavaScript or HTML code
+  if (text.includes('function') || 
+      text.includes('var ') || 
+      text.includes('const ') || 
+      text.includes('window.') ||
+      text.includes('document.') ||
+      text.includes('svg') ||
+      text.includes('<') ||
+      text.includes('=') ||
+      text.length > 100) {
+    console.log("Detected code in goal text, replacing with generic text");
+    return "Special Goal";
+  }
+  
+  // Remove any HTML tags, whitespace, and trim
+  text = text.replace(/<[^>]*>/g, '').trim();
+  text = text.replace(/\s+/g, ' ');
+  
+  // Convert common whitespace markers to actual spaces
+  if (text === "(whitespace)") return "Topless";
+  
+  return text;
 }
 
 module.exports = {

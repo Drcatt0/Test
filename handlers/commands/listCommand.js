@@ -66,6 +66,7 @@ async function handler(ctx) {
               hasGoal: status.goal?.active || false,
               goalProgress: status.goal?.progress || 0,
               goalText: status.goal?.text || '',
+              goalTokenAmount: status.goal?.tokenAmount || 0,
               goalCompleted: status.goal?.completed || false,
               lastChecked: new Date().toISOString(),
               nextBroadcast: status.nextBroadcast || user.nextBroadcast
@@ -78,6 +79,7 @@ async function handler(ctx) {
             hasGoal: status.goal?.active || false,
             goalProgress: status.goal?.progress || 0,
             goalText: status.goal?.text || '',
+            goalTokenAmount: status.goal?.tokenAmount || 0,
             goalCompleted: status.goal?.completed || false,
             lastChecked: new Date().toISOString(),
             nextBroadcast: status.nextBroadcast || user.nextBroadcast
@@ -118,6 +120,11 @@ async function handler(ctx) {
         const goalEmoji = "🎯";
         const progressPercent = Math.floor(user.goalProgress || 0);
         buttonText = `${user.username} ${statusIcon} ${goalEmoji} ${progressPercent}%`;
+        
+        // Add tokens if available
+        if (user.goalTokenAmount) {
+          buttonText += ` (${user.goalTokenAmount}tk)`;
+        }
       }
       
       inlineKeyboard.push([
@@ -227,8 +234,22 @@ async function handleUserDetails(ctx) {
       
       message += `Goal Progress: ${progressBar} ${displayPercentage}%\n`;
       
-      if (userData.goalText) {
-        message += `Goal: ${userData.goalText}\n\n`;
+      // Add token amount if available
+      if (userData.goalTokenAmount) {
+        message += `Tokens: ${userData.goalTokenAmount}tk\n`;
+      }
+      
+      // Sanitize goal text
+      let safeGoalText = userData.goalText || '';
+      if (safeGoalText.length > 100 || 
+          safeGoalText.includes('function') || 
+          safeGoalText.includes('var ') || 
+          safeGoalText.includes('window.')) {
+        safeGoalText = "Special Goal";
+      }
+      
+      if (safeGoalText) {
+        message += `Goal: ${safeGoalText}\n\n`;
       }
       
       if (userData.goalCompleted) {
@@ -249,15 +270,15 @@ async function handleUserDetails(ctx) {
     // Recording options (different durations)
     if (userData.isLive) {
       actionButtons.push([
-        Markup.button.callback(`⏺️ Record 30s`, `quickRecord:${username}:${chatId}:30s`),
-        Markup.button.callback(`⏺️ Record 5m`, `quickRecord:${username}:${chatId}:5m`)
+        Markup.button.callback(`⚪ Record 30s`, `quickRecord:${username}:${chatId}:30s`),
+        Markup.button.callback(`⚪ Record 5m`, `quickRecord:${username}:${chatId}:5m`)
       ]);
       
       // Premium users get additional recording options
       if (isPremium) {
         actionButtons.push([
-          Markup.button.callback(`⏺️ Record 10m`, `quickRecord:${username}:${chatId}:10m`),
-          Markup.button.callback(`⏺️ Record 30m`, `quickRecord:${username}:${chatId}:30m`)
+          Markup.button.callback(`⚪ Record 10m`, `quickRecord:${username}:${chatId}:10m`),
+          Markup.button.callback(`⚪ Record 30m`, `quickRecord:${username}:${chatId}:30m`)
         ]);
       }
     }
@@ -265,7 +286,7 @@ async function handleUserDetails(ctx) {
     // Premium actions
     if (isPremium) {
       const autoRecordText = isAutoRecorded ? 
-        `🛑 Remove Goal Auto` : 
+        `🔴 Remove Goal Auto` : 
         `🎯 Add Goal Auto`;
       
       actionButtons.push([
@@ -323,6 +344,11 @@ async function handleBackToList(ctx) {
         const goalEmoji = "🎯";
         const progressPercent = Math.floor(userData.goalProgress || 0);
         buttonText = `${user.username} ${statusIcon} ${goalEmoji} ${progressPercent}%`;
+        
+        // Add tokens if available
+        if (userData.goalTokenAmount) {
+          buttonText += ` (${userData.goalTokenAmount}tk)`;
+        }
       }
       
       inlineKeyboard.push([
@@ -408,6 +434,7 @@ async function handleRefreshAction(ctx) {
               hasGoal: status.goal?.active || false,
               goalProgress: status.goal?.progress || 0,
               goalText: status.goal?.text || '',
+              goalTokenAmount: status.goal?.tokenAmount || 0,
               goalCompleted: status.goal?.completed || false,
               lastChecked: new Date().toISOString(),
               nextBroadcast: status.nextBroadcast || user.nextBroadcast
@@ -420,6 +447,7 @@ async function handleRefreshAction(ctx) {
             hasGoal: status.goal?.active || false,
             goalProgress: status.goal?.progress || 0,
             goalText: status.goal?.text || '',
+            goalTokenAmount: status.goal?.tokenAmount || 0,
             goalCompleted: status.goal?.completed || false,
             lastChecked: new Date().toISOString(),
             nextBroadcast: status.nextBroadcast || user.nextBroadcast
@@ -457,6 +485,11 @@ async function handleRefreshAction(ctx) {
         const goalEmoji = "🎯";
         const progressPercent = Math.floor(user.goalProgress || 0);
         buttonText = `${user.username} ${statusIcon} ${goalEmoji} ${progressPercent}%`;
+        
+        // Add tokens if available
+        if (user.goalTokenAmount) {
+          buttonText += ` (${user.goalTokenAmount}tk)`;
+        }
       }
       
       inlineKeyboard.push([
@@ -488,32 +521,20 @@ async function handleRefreshAction(ctx) {
 
 /**
  * Action handler for quick record button that triggers normal record flow
- * FIXED: Now correctly handles the duration parameter
+ * NOTE: This function is moved to commandHandler.js for direct implementation
  */
 async function handleQuickRecordAction(ctx) {
   try {
     const username = ctx.match[1];
     const chatId = parseInt(ctx.match[2], 10);
     const duration = ctx.match[3] || "30s"; // Get duration from pattern match
-    const userId = ctx.from.id;
     
-    // Answer the callback query
-    await ctx.answerCbQuery(`Preparing to record ${username} for ${duration}...`);
+    // This is just a stub - the actual implementation is now in commandHandler.js
+    console.log(`Quick record action triggered for ${username} (${duration}) - stub only`);
     
-    // Just create and send a message that looks like the /record command
-    // This will be processed by the bot as a normal command
-    await ctx.telegram.sendMessage(
-      chatId,
-      `/record ${username} ${duration}`
-    );
-    
+    await ctx.answerCbQuery(`This button should be handled by commandHandler.js now`);
   } catch (error) {
     console.error("Error in handleQuickRecordAction:", error);
-    try {
-      await ctx.answerCbQuery('An error occurred. Please try again.', { show_alert: true });
-    } catch (e) {
-      console.error("Error sending callback answer:", e);
-    }
   }
 }
 
@@ -612,7 +633,8 @@ module.exports = {
       handler: handleRefreshAction
     },
     {
-      // FIXED: Pattern now correctly captures the duration parameter
+      // This pattern still exists for completeness, but the actual implementation
+      // is moved to commandHandler.js for better error handling
       pattern: /^quickRecord:(.+):(-?\d+):(.+)$/,
       handler: handleQuickRecordAction
     },

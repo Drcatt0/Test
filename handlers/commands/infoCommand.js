@@ -58,9 +58,16 @@ async function handler(ctx) {
           const goalPercentage = Math.floor(status.goal.progress);
           const progressBar = generateProgressBar(goalPercentage);
           
-          const goalMessage = 
-            `🎯 *Goal Progress:* ${progressBar} ${goalPercentage}%\n` +
-            (status.goal.text ? `*Goal:* ${status.goal.text}` : '');
+          let goalMessage = `🎯 *Goal Progress:* ${progressBar} ${goalPercentage}%\n`;
+          
+          // Add token amount if available
+          if (status.goal.tokenAmount) {
+            goalMessage += `*Tokens:* ${status.goal.tokenAmount}tk\n`;
+          }
+          
+          if (status.goal.text) {
+            goalMessage += `*Goal:* ${status.goal.text}`;
+          }
           
           await ctx.reply(goalMessage, { parse_mode: 'Markdown' });
         }

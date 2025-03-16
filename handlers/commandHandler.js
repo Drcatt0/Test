@@ -104,16 +104,31 @@ function registerCommands(bot) {
     processCommandNonBlocking(ctx, (c) => removeCommand.handleRemoveAction(c, username, chatId));
   });
   
-  // For quick recording
-  bot.action(/^quickRecord:(.+):(-?\d+)$/, async (ctx) => {
+  // Explicit handler for quick recording - FIXED IMPLEMENTATION
+  bot.action(/^quickRecord:(.+):(-?\d+):(.+)$/, async (ctx) => {
     // Answer the callback query immediately
-    ctx.answerCbQuery(`Starting recording of ${ctx.match[1]}...`).catch(e => {});
+    console.log(`Quick Record button clicked for ${ctx.match[1]} (${ctx.match[3]})`);
+    ctx.answerCbQuery(`Starting recording of ${ctx.match[1]} for ${ctx.match[3]}...`).catch(e => {
+      console.error("Error answering callback query:", e);
+    });
     
-    const listCommand = require(path.join(commandsPath, 'listCommand'));
-    if (listCommand.actions) {
-      const action = listCommand.actions.find(a => a.pattern.toString().includes('quickRecord'));
-      if (action && action.handler) {
-        processCommandNonBlocking(ctx, action.handler);
+    try {
+      const username = ctx.match[1];
+      const chatId = parseInt(ctx.match[2], 10);
+      const duration = ctx.match[3]; // Duration parameter (e.g., "30s", "5m")
+      
+      // Create and send a /record command directly
+      const recordMessage = `/record ${username} ${duration}`;
+      console.log(`Sending record command: ${recordMessage}`);
+      
+      await ctx.telegram.sendMessage(chatId, recordMessage);
+      console.log(`Record command sent successfully`);
+    } catch (error) {
+      console.error("Error processing quick record:", error);
+      try {
+        await ctx.reply("Error processing recording request. Please try again or use the /record command directly.");
+      } catch (e) {
+        console.error("Error sending error message:", e);
       }
     }
   });

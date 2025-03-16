@@ -19,23 +19,29 @@ let monitorInterval = null;
  * @param {Object} botInstance - Telegram bot instance
  */
 async function startGoalMonitoring(botInstance) {
-  console.log("🎯 Starting simplified goal monitoring service...");
+  console.log("🎯 Starting enhanced goal monitoring service...");
   
   // Stop any existing interval
   if (monitorInterval) {
     clearInterval(monitorInterval);
   }
   
-  // Start the monitoring interval (every 10 seconds for near real-time monitoring)
+  // Force reset the interval to 5 seconds for more frequent updates
+  const checkInterval = 5 * 1000; // 5 seconds regardless of config
+  console.log(`Setting goal check interval to ${checkInterval}ms (${checkInterval/1000} seconds)`);
+  
+  // Start the monitoring interval
   monitorInterval = setInterval(async () => {
     try {
+      const timestamp = new Date().toISOString();
+      console.log(`🔍 [${timestamp}] Running goal status check...`);
       await monitorAllGoals(botInstance);
     } catch (error) {
       console.error("❌ Error in goal monitoring routine:", error);
     }
-  }, 10 * 1000); // 10 seconds for near-real-time updates
+  }, checkInterval);
   
-  console.log("✅ Goal monitoring service started (checking every 10 seconds)");
+  console.log("✅ Goal monitoring service started (checking every 5 seconds)");
   
   // Initial setup of monitors
   await setupInitialMonitors();
@@ -144,7 +150,8 @@ async function monitorAllGoals(botInstance) {
   }
   
   // Use a more concise log format
-  console.log(`🎯 Checking ${activeGoalMonitors.size} active goal monitors...`);
+  const timestamp = new Date().toISOString();
+  console.log(`🎯 [${timestamp}] Checking ${activeGoalMonitors.size} active goal monitors...`);
   
   // Process in small batches to avoid overwhelming the network
   const batchSize = 3; 
@@ -194,11 +201,11 @@ async function checkGoalStatus(username, botInstance) {
     return false;
   }
   
-  // Check if we're checking too frequently (minimum 5 seconds between checks)
+  // Check if we're checking too frequently (minimum 3 seconds between checks)
   const now = Date.now();
   const timeSinceLastCheck = now - monitor.lastChecked;
   
-  if (timeSinceLastCheck < 5000) {
+  if (timeSinceLastCheck < 3000) {
     return false;
   }
   
@@ -209,6 +216,24 @@ async function checkGoalStatus(username, botInstance) {
   let status;
   try {
     status = await getStreamStatus(username);
+    
+    // Add diagnostic logging with timestamp
+    const timestamp = new Date().toISOString();
+    if (status.isLive) {
+      if (status.goal?.active) {
+        console.log(`[${timestamp}] 🎯 ${username}: live=yes, ` +
+          `goal=yes, ` +
+          `progress=${status.goal?.progress.toFixed(1) || 0}%, ` +
+          `text="${status.goal?.text || 'None'}", ` +
+          `tokens=${status.goal?.tokenAmount || 'unknown'}tk, ` +
+          `completed=${status.goal?.completed || false}`);
+      } else {
+        console.log(`[${timestamp}] 🎯 ${username}: live=yes, goal=no (no active goal)`);
+      }
+    } else {
+      console.log(`[${timestamp}] 🎯 ${username}: live=no (offline)`);
+    }
+    
   } catch (error) {
     console.error(`Error getting stream status for ${username}:`, error);
     
@@ -275,7 +300,7 @@ async function checkGoalStatus(username, botInstance) {
     }
   }
   
-  // Skip if no active goal
+  // Skip if no active goal, but don't remove the monitor
   if (!status.goal || !status.goal.active) {
     if (monitor.goal && monitor.goal.active) {
       console.log(`${username}'s goal has been removed or completed`);
@@ -286,7 +311,7 @@ async function checkGoalStatus(username, botInstance) {
   
   // First check or goal reset, just store the data
   if (!monitor.goal) {
-    console.log(`${username} has a new goal: ${status.goal.text || 'No text'} (${status.goal.progress}%)`);
+    console.log(`${username} has a new goal: ${status.goal.text || 'No text'} (${status.goal.progress.toFixed(1)}%) - ${status.goal.tokenAmount || 'unknown'} tokens`);
     monitor.goal = status.goal;
     return true;
   }
@@ -306,9 +331,18 @@ async function checkGoalStatus(username, botInstance) {
   monitor.goal.progress = status.goal.progress;
   
   // Check for goal completion (100% or very close to it)
-  // CHANGED: Only consider 100% completion (or very close to it)
   const isCompleted = status.goal.progress >= 99;
   const wasCompleted = monitor.goal.completed || false;
+  
+  // Log goal progress regardless of completion status
+  const timestamp = new Date().toISOString();
+  console.log(`[${timestamp}] Goal check for ${username}: ` +
+    `progress=${Math.round(status.goal.progress)}%, ` +
+    `threshold=99%, ` +
+    `isCompleted=${isCompleted}, ` +
+    `wasCompleted=${wasCompleted}, ` +
+    `goal="${status.goal.text || 'No text'}", ` +
+    `tokens=${status.goal.tokenAmount || 'unknown'}tk`);
   
   if (isCompleted && !wasCompleted) {
     console.log(`🎉 Goal completed for ${username}! Progress: ${Math.round(status.goal.progress)}%`);
@@ -319,9 +353,14 @@ async function checkGoalStatus(username, botInstance) {
     // Notify all chats about goal completion
     for (const chatId of monitor.chatIds) {
       try {
+        const goalInfo = status.goal.text ? 
+          `\n*Goal:* ${status.goal.text}` : '';
+        const tokenInfo = status.goal.tokenAmount ? 
+          `\n*Tokens:* ${status.goal.tokenAmount}tk` : '';
+        
         await botInstance.telegram.sendMessage(
           chatId,
-          `🎉 *${username}* has completed their goal!`,
+          `🎉 *${username}* has completed their goal!${goalInfo}${tokenInfo}`,
           { parse_mode: 'Markdown' }
         );
       } catch (error) {
@@ -469,16 +508,17 @@ async function triggerGoalRecording(username, goal, chatId, botInstance, eligibl
 }
 
 /**
- * Improved function to get stream status with network optimizations
+ * Get the status of a streamer - OPTIMIZED VERSION
+ * Uses lightweight HTTP checks when possible
  */
 async function getStreamStatus(username) {
   try {
-    // Use lightweight checker with very short cache (5 seconds) for goal monitoring
-    // since we need near real-time data
+    // Use lightweight cached check with forced refresh for goal monitoring
+    // since we need the most up-to-date data for goals
     return await lightweightChecker.getCachedStatus(username, {
-      includeGoal: true,       // We need goal information
-      maxAge: 5000,            // Very short cache
-      forceRefresh: false      // Use cache if valid
+      includeGoal: true,
+      forceRefresh: true, // Always get fresh data for goal monitoring
+      maxAge: 5000 // Very short cache time (5 seconds) for goal monitoring
     });
   } catch (error) {
     console.error(`Error getting status for ${username}:`, error);
@@ -496,7 +536,7 @@ async function getStreamStatus(username) {
 function generateProgressBar(percentage, length = 10) {
   const progress = Math.floor((percentage / 100) * length);
   const filled = '█'.repeat(progress);
-  const empty = '░'.repeat(length - filled);
+  const empty = '░'.repeat(length - progress);
   return filled + empty;
 }
 

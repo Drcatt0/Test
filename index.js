@@ -95,6 +95,11 @@ async function startBot() {
     await notifierService.startNotifier(bot);  
     console.log("✅ Notifier Service is running!");
 
+    // 🔥 Start the goal monitor service
+    console.log("🚀 Starting Goal Monitor Service...");
+    await goalMonitorService.startGoalMonitoring(bot);
+    console.log("✅ Goal Monitor Service is running!");
+
     // Start the bot
     await bot.launch();
     console.log("✅ Telegram bot is up and running!");
